@@ -1,0 +1,102 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getPlatformDB } from '../lib/db';
+
+const db = getPlatformDB(Astro.locals);
+const user = await db.getOrCreateDefaultUser();
+const accounts = await db.listGoogleAccounts(user.id);
+const instances = await db.listInstances(user.id);
+
+const totalCapacityGb = (accounts.length * 15) || 15;
+---
+
+<Layout title="Serverless PostgreSQL on Google Drive" activeNav="dashboard">
+  <!-- Neon Hero Section -->
+  <section style="text-align: center; padding: 4.5rem 1rem 3.5rem; position: relative;">
+    <!-- Neon Announcement Pill -->
+    <div style="display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(0, 229, 153, 0.08); border: 1px solid rgba(0, 229, 153, 0.25); border-radius: 9999px; padding: 0.35rem 0.95rem; font-size: 0.8125rem; color: var(--neon-green); margin-bottom: 1.75rem;">
+      <span style="font-weight: 700;">NEW</span> 100% Free PostgreSQL Cloud Hosting via Google Drive
+    </div>
+
+    <h1 style="font-size: 3.5rem; font-weight: 800; letter-spacing: -0.035em; line-height: 1.12; max-width: 900px; margin: 0 auto 1.5rem; color: #fff;">
+      Serverless Postgres virtualized over <span style="background: linear-gradient(135deg, #00e599 30%, #00b8ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Google Drive</span>
+    </h1>
+
+    <p style="font-size: 1.15rem; color: var(--neon-text-secondary); max-width: 660px; margin: 0 auto 2.5rem; line-height: 1.6;">
+      Harvest idle 15 GB storage allocations across personal and organization Google accounts. Run authentic PostgreSQL 16 on Cloudflare Workers edge runtime at absolute zero cost.
+    </p>
+
+    <div style="display: flex; justify-content: center; gap: 0.85rem; flex-wrap: wrap;">
+      <a href="/dashboard" class="neon-btn neon-btn-primary" style="padding: 0.65rem 1.65rem; font-size: 0.9375rem;">
+        Open Console →
+      </a>
+      <a href="/dashboard/instances/dql_demo_db/studio" class="neon-btn neon-btn-secondary" style="padding: 0.65rem 1.65rem; font-size: 0.9375rem;">
+        ⚡ Launch SQL Editor
+      </a>
+    </div>
+  </section>
+
+  <!-- Live Code & Architecture Preview (Neon Style) -->
+  <div class="neon-card" style="max-width: 860px; margin: 0 auto 3.5rem; padding: 0; background: #07080a; border-color: var(--neon-border); overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+    <div style="padding: 0.65rem 1rem; background: #0c0d10; border-bottom: 1px solid var(--neon-border); display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+      <div style="display: flex; align-items: center; gap: 0.4rem;">
+        <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444; opacity: 0.7;"></span>
+        <span style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b; opacity: 0.7;"></span>
+        <span style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; opacity: 0.7;"></span>
+        <span style="color: var(--neon-text-muted); margin-left: 0.5rem; font-family: var(--font-mono);">psql / query console</span>
+      </div>
+      <span class="neon-badge neon-badge-green" style="font-size: 0.6875rem;">⚡ 0.43 ms execution</span>
+    </div>
+
+    <div style="padding: 1.25rem 1.5rem; font-family: var(--font-mono); font-size: 0.8125rem; line-height: 1.7;">
+      <div style="color: #6ee7b7;"><span style="color: var(--neon-text-muted);">$</span> psql -h 127.0.0.1 -p 5432 -U postgres -d driveql</div>
+      <div style="color: var(--neon-text-muted);">psql (PostgreSQL 16.2, Cloudflare Edge / Google Drive Volume)</div>
+      <div style="margin: 0.5rem 0; color: #fff;">driveql=&gt; <span style="color: var(--neon-cyan);">SELECT</span> * <span style="color: var(--neon-cyan);">FROM</span> products <span style="color: var(--neon-cyan);">LIMIT</span> 1;</div>
+      <div style="color: var(--neon-text-secondary); background: rgba(255,255,255,0.02); padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid var(--neon-border);">
+        id | title                   | price | inventory<br />
+        ---+-------------------------+-------+----------<br />
+         1 | Serverless Postgres Node |  0.00 |       100<br />
+        (1 row) • Time: 0.43ms (WASM cache hit)
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature Grid -->
+  <section style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 3.5rem;">
+    <div class="neon-card">
+      <div style="color: var(--neon-green); font-size: 1.5rem; margin-bottom: 0.75rem;">
+        ⚡
+      </div>
+      <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.35rem; color: #fff;">
+        Authentic Postgres 16
+      </h3>
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); line-height: 1.6;">
+        Powered by PGlite (PostgreSQL compiled to WebAssembly). Full ACID transactions, JSONB, and extensions running in sub-millisecond isolates.
+      </p>
+    </div>
+
+    <div class="neon-card">
+      <div style="color: var(--neon-cyan); font-size: 1.5rem; margin-bottom: 0.75rem;">
+        ☁️
+      </div>
+      <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.35rem; color: #fff;">
+        15 GB / Account Pooling
+      </h3>
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); line-height: 1.6;">
+        Transform multiple Google Drive allocations into sharded, isolated database volumes with zero storage invoices.
+      </p>
+    </div>
+
+    <div class="neon-card">
+      <div style="color: var(--neon-green); font-size: 1.5rem; margin-bottom: 0.75rem;">
+        🌐
+      </div>
+      <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.35rem; color: #fff;">
+        Cloudflare Edge Speed
+      </h3>
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); line-height: 1.6;">
+        Built on Astro.js SSR and Cloudflare Workers. Sub-5ms cold starts globally with encrypted token vaults and Cloudflare D1.
+      </p>
+    </div>
+  </section>
+</Layout>

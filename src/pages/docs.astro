@@ -1,0 +1,138 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getEnv } from '../lib/env';
+
+const env = getEnv(Astro.locals);
+const hasGoogleCreds = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+const appUrl = env.APP_URL.replace(/\/$/, '');
+---
+
+<Layout title="Documentation & Provider Setup" activeNav="docs">
+  <div style="max-width: 900px; margin: 0 auto;">
+    <div style="margin-bottom: 2rem;">
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+        <span class="neon-badge neon-badge-green">Developer Docs</span>
+        <span class="neon-badge neon-badge-gray">v1.0.0</span>
+      </div>
+      <h1 style="font-size: 2.25rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.5rem; color: #fff;">
+        Documentation & Setup Guide
+      </h1>
+      <p style="color: var(--neon-text-secondary); font-size: 0.9375rem; line-height: 1.6;">
+        DriveQL harnesses free 15 GB Google Drive storage allocations to host authentic PostgreSQL 16 instances using WebAssembly and Cloudflare Workers. Follow this guide to set up your environment variables.
+      </p>
+    </div>
+
+    <!-- Quick Status Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+      <div class="neon-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <span style="font-weight: 600; font-size: 0.8125rem;">Google Cloud OAuth</span>
+          <span class={`neon-badge ${hasGoogleCreds ? 'neon-badge-green' : 'neon-badge-amber'}`}>
+            {hasGoogleCreds ? 'Configured' : 'Needs Setup'}
+          </span>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--neon-text-muted);">
+          {hasGoogleCreds ? 'Client ID & Secret active' : 'Set GOOGLE_CLIENT_ID in .env'}
+        </p>
+      </div>
+
+      <div class="neon-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <span style="font-weight: 600; font-size: 0.8125rem;">AES-256 Token Vault</span>
+          <span class="neon-badge neon-badge-green">WebCrypto GCM</span>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--neon-text-muted);">
+          Hardware-accelerated AES-256 encryption
+        </p>
+      </div>
+
+      <div class="neon-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <span style="font-weight: 600; font-size: 0.8125rem;">Cloudflare D1</span>
+          <span class="neon-badge neon-badge-green">5 GB Free Tier</span>
+        </div>
+        <p style="font-size: 0.75rem; color: var(--neon-text-muted);">
+          Serverless metadata registry
+        </p>
+      </div>
+    </div>
+
+    <!-- Section 1: Required Environment Variables -->
+    <section class="neon-card" style="margin-bottom: 1.5rem;">
+      <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff;">
+        1. Required Environment Variables
+      </h2>
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); margin-bottom: 1rem; line-height: 1.6;">
+        Create a <code style="color: var(--neon-green); font-family: var(--font-mono);">.env</code> file in your project root containing:
+      </p>
+
+      <div class="neon-code" style="margin-bottom: 1rem;">
+<pre># 1. Google Cloud OAuth Credentials
+GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"
+
+# 2. Master Token Encryption Secret (32-byte hex for AES-256-GCM)
+ENCRYPTION_SECRET="{env.ENCRYPTION_SECRET}"
+
+# 3. Application Base URL
+APP_URL="{appUrl}"</pre>
+      </div>
+    </section>
+
+    <!-- Section 2: Step-by-Step Google Cloud Console -->
+    <section id="google-setup" class="neon-card" style="margin-bottom: 1.5rem;">
+      <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff;">
+        2. Acquiring Google Cloud OAuth Credentials (100% Free)
+      </h2>
+      <ol style="margin-left: 1.25rem; font-size: 0.8125rem; color: var(--neon-text-secondary); line-height: 1.8;">
+        <li>
+          Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" style="color: var(--neon-green); text-decoration: underline;">Google Cloud Console</a> and create a project (e.g., <code>DriveQL-Database</code>).
+        </li>
+        <li>
+          Navigate to <strong>APIs & Services → Enabled APIs & services</strong>, click <strong>+ ENABLE APIS AND SERVICES</strong>, search for <strong>Google Drive API</strong>, and click <strong>Enable</strong>.
+        </li>
+        <li>
+          Navigate to <strong>APIs & Services → OAuth consent screen</strong>:
+          <ul style="margin-left: 1rem; margin-top: 0.25rem;">
+            <li>Select <strong>External</strong> User Type and click <strong>Create</strong>.</li>
+            <li>Fill in App name (e.g. <code>DriveQL</code>) and your developer contact email.</li>
+            <li>Under <strong>Scopes</strong>, select:
+              <br /><code style="color: var(--neon-cyan);">https://www.googleapis.com/auth/drive.file</code>
+              <br /><code style="color: var(--neon-cyan);">https://www.googleapis.com/auth/userinfo.email</code>
+            </li>
+            <li>Under <strong>Test users</strong>, add your personal Gmail accounts.</li>
+          </ul>
+        </li>
+        <li>
+          Navigate to <strong>APIs & Services → Credentials</strong>:
+          <ul style="margin-left: 1rem; margin-top: 0.25rem;">
+            <li>Click <strong>+ CREATE CREDENTIALS → OAuth client ID</strong>.</li>
+            <li>Application type: <strong>Web application</strong>.</li>
+            <li>
+              Under <strong>Authorized redirect URIs</strong>, add:
+              <br /><code style="color: var(--neon-green);">{appUrl}/api/auth/google/callback</code>
+            </li>
+            <li>Click <strong>Create</strong> and copy your <strong>Client ID</strong> and <strong>Client Secret</strong> into <code>.env</code>.</li>
+          </ul>
+        </li>
+      </ol>
+    </section>
+
+    <!-- Section 3: Wire Proxy for psql and ORMs -->
+    <section class="neon-card">
+      <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff;">
+        3. Connecting Prisma, Drizzle, and psql
+      </h2>
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); margin-bottom: 0.75rem; line-height: 1.6;">
+        Standard tools connect via TCP port 5432. Start the built-in wire proxy bridge:
+      </p>
+      <div class="neon-code" style="margin-bottom: 0.85rem;">
+<pre>node ./src/cli/proxy.mjs --instance YOUR_INSTANCE_ID --token YOUR_API_KEY</pre>
+      </div>
+      <p style="font-size: 0.75rem; color: var(--neon-text-muted);">
+        Then point Prisma or Drizzle to:
+        <br /><code style="color: var(--neon-cyan);">postgresql://postgres:token@localhost:5432/driveql?sslmode=disable</code>
+      </p>
+    </section>
+  </div>
+</Layout>

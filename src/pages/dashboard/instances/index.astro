@@ -1,0 +1,263 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import { getPlatformDB } from '../../../lib/db';
+
+const db = getPlatformDB(Astro.locals);
+const user = await db.getOrCreateDefaultUser();
+const accounts = await db.listGoogleAccounts(user.id);
+const instances = await db.listInstances(user.id);
+---
+
+<Layout title="Database Instances" activeNav="instances">
+  <!-- Top Header -->
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem;">
+        <h1 style="font-size: 1.75rem; font-weight: 700; letter-spacing: -0.025em;">
+          Database Instances
+        </h1>
+        <span class="neon-badge neon-badge-green">{instances.length} Active</span>
+      </div>
+      <p style="color: var(--neon-text-secondary); font-size: 0.875rem;">
+        Transform connected Google Drive accounts into PostgreSQL 16 database instances.
+      </p>
+    </div>
+
+    <div>
+      <button id="openModalBtn" class="neon-btn neon-btn-primary" disabled={accounts.length === 0}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        Provision New Database
+      </button>
+    </div>
+  </div>
+
+  {accounts.length === 0 && (
+    <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 0.85rem 1.25rem; margin-bottom: 1.5rem; color: #fbbf24; display: flex; justify-content: space-between; align-items: center; font-size: 0.875rem;">
+      <span>⚠️ Please connect at least one Google Drive account in the storage pool before provisioning a database.</span>
+      <a href="/dashboard/accounts" class="neon-btn neon-btn-primary" style="font-size: 0.75rem;">
+        Connect Drive Account →
+      </a>
+    </div>
+  )}
+
+  <!-- Instances Grid -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.25rem; margin-bottom: 2.5rem;">
+    {instances.length === 0 ? (
+      <div class="neon-card" style="grid-column: 1 / -1; text-align: center; padding: 4rem 1.5rem; border: 1px dashed var(--neon-border);">
+        <div style="font-size: 2rem; margin-bottom: 0.75rem; opacity: 0.6;">🗄️</div>
+        <h3 style="font-size: 1.125rem; font-weight: 700; margin-bottom: 0.35rem;">No Databases Provisioned</h3>
+        <p style="color: var(--neon-text-secondary); font-size: 0.875rem; max-width: 480px; margin: 0 auto 1.5rem;">
+          Assign any of your connected Google Drive storage pools to a new isolated PostgreSQL instance.
+        </p>
+        <button id="openModalBtn2" class="neon-btn neon-btn-primary" disabled={accounts.length === 0}>
+          Provision First Database
+        </button>
+      </div>
+    ) : (
+      instances.map((inst) => {
+        const currentSizeMb = Math.round((inst.current_size_bytes / 1024 / 1024) * 100) / 100;
+        const quotaGb = Math.round((inst.allocated_quota_bytes / 1024 / 1024 / 1024) * 10) / 10;
+        const matchingAccount = accounts.find((a) => a.id === inst.google_account_id);
+
+        return (
+          <div class="neon-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                <div>
+                  <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.2rem;">
+                    <a href={`/dashboard/instances/${inst.id}`} style="color: #fff;">
+                      {inst.name}
+                    </a>
+                  </h3>
+                  <div style="font-size: 0.7rem; color: var(--neon-text-muted); font-family: var(--font-mono);">
+                    {inst.id}
+                  </div>
+                </div>
+                <span class="neon-badge neon-badge-green">{inst.status}</span>
+              </div>
+
+              {inst.description && (
+                <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); margin-bottom: 1rem;">
+                  {inst.description}
+                </p>
+              )}
+
+              <div style="background: #08090c; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; font-size: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
+                  <span style="color: var(--neon-text-muted);">Host Drive:</span>
+                  <span style="color: var(--neon-text-secondary);">{matchingAccount?.google_email || 'Mapped Drive'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
+                  <span style="color: var(--neon-text-muted);">Allocated Storage:</span>
+                  <span style="font-weight: 600; font-family: var(--font-mono);">{quotaGb} GB</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--neon-text-muted);">Database State:</span>
+                  <span style="font-family: var(--font-mono); color: var(--neon-cyan);">
+                    {currentSizeMb < 0.1 ? `${Math.round(inst.current_size_bytes / 1024)} KB` : `${currentSizeMb} MB`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style="border-top: 1px solid var(--neon-border); padding-top: 0.85rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+              <a href={`/dashboard/instances/${inst.id}/studio`} class="neon-btn neon-btn-primary" style="flex: 1; font-size: 0.75rem;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                SQL Editor
+              </a>
+              <a href={`/dashboard/instances/${inst.id}`} class="neon-btn neon-btn-secondary" style="font-size: 0.75rem;">
+                Settings
+              </a>
+            </div>
+          </div>
+        );
+      })
+    )}
+  </div>
+
+  <!-- Neon Modal: Provision Database -->
+  <div id="createModal" style="display: none; position: fixed; inset: 0; background: rgba(5,6,8,0.75); backdrop-filter: blur(8px); z-index: 200; align-items: center; justify-content: center; padding: 1rem;">
+    <div class="neon-card" style="max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; background: #0c0e12; border-color: var(--neon-border-light); box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; border-bottom: 1px solid var(--neon-border); padding-bottom: 0.75rem;">
+        <h2 style="font-size: 1.15rem; font-weight: 700;">Provision PostgreSQL Database</h2>
+        <button id="closeModalBtn" style="background: none; border: none; color: var(--neon-text-muted); cursor: pointer; font-size: 1.25rem;">✕</button>
+      </div>
+
+      <form id="createForm" style="display: flex; flex-direction: column; gap: 1rem;">
+        <div>
+          <label style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.35rem;">Database Name</label>
+          <input 
+            type="text" 
+            id="instName" 
+            required 
+            placeholder="e.g. dev_database or analytics_pg" 
+            class="neon-input"
+            style="width: 100%;"
+          />
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.35rem;">Target Google Drive Volume</label>
+          <select 
+            id="instAccount" 
+            required 
+            class="neon-input"
+            style="width: 100%; cursor: pointer;"
+          >
+            {accounts.map((a) => (
+              <option value={a.id}>
+                {a.google_email} (15 GB Pool)
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.35rem;">Allocated Quota (GB)</label>
+          <input 
+            type="number" 
+            id="instQuota" 
+            value="5" 
+            min="1" 
+            max="15" 
+            class="neon-input"
+            style="width: 100%;"
+          />
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.35rem;">Description (Optional)</label>
+          <input 
+            type="text" 
+            id="instDesc" 
+            placeholder="Primary backend relational database" 
+            class="neon-input"
+            style="width: 100%;"
+          />
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0;">
+          <input type="checkbox" id="instSample" checked style="cursor: pointer; accent-color: var(--neon-green);" />
+          <label for="instSample" style="font-size: 0.8125rem; color: var(--neon-text-secondary); cursor: pointer;">
+            Seed initial demo tables (<code>welcome</code>, <code>products</code>)
+          </label>
+        </div>
+
+        <div id="formError" style="display: none; color: #f87171; font-size: 0.8125rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); padding: 0.5rem; border-radius: 4px;"></div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 1rem; border-top: 1px solid var(--neon-border); padding-top: 1rem;">
+          <button type="button" id="cancelModalBtn" class="neon-btn neon-btn-secondary">Cancel</button>
+          <button type="submit" id="submitBtn" class="neon-btn neon-btn-primary">Provision Database</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script is:inline>
+    const modal = document.getElementById('createModal');
+    const openBtn = document.getElementById('openModalBtn');
+    const openBtn2 = document.getElementById('openModalBtn2');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const cancelBtn = document.getElementById('cancelModalBtn');
+    const form = document.getElementById('createForm');
+    const errorBox = document.getElementById('formError');
+    const submitBtn = document.getElementById('submitBtn');
+
+    function openModal() {
+      if (modal) modal.style.display = 'flex';
+    }
+    function closeModal() {
+      if (modal) modal.style.display = 'none';
+      if (errorBox) errorBox.style.display = 'none';
+    }
+
+    if (openBtn) openBtn.onclick = openModal;
+    if (openBtn2) openBtn2.onclick = openModal;
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+
+    if (form) {
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        errorBox.style.display = 'none';
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Creating Database Volume...';
+
+        const name = document.getElementById('instName').value;
+        const googleAccountId = document.getElementById('instAccount').value;
+        const allocatedQuotaGb = parseInt(document.getElementById('instQuota').value, 10);
+        const description = document.getElementById('instDesc').value;
+        const initSampleData = document.getElementById('instSample').checked;
+
+        try {
+          const res = await fetch('/api/instances', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              googleAccountId,
+              allocatedQuotaGb,
+              description,
+              initSampleData,
+            }),
+          });
+
+          const data = await res.json();
+          if (res.ok && data.success) {
+            window.location.href = `/dashboard/instances/${data.instance.id}/studio`;
+          } else {
+            errorBox.innerText = data.error || 'Failed to create instance';
+            errorBox.style.display = 'block';
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Provision Database';
+          }
+        } catch (err) {
+          errorBox.innerText = 'Network error: ' + err.message;
+          errorBox.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Provision Database';
+        }
+      };
+    }
+  </script>
+</Layout>

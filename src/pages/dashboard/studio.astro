@@ -1,0 +1,56 @@
+---
+import { getPlatformDB } from '../../lib/db';
+import { PGliteEngine } from '../../lib/pglite-engine';
+
+const db = getPlatformDB(Astro.locals);
+const user = await db.getOrCreateDefaultUser();
+const instances = await db.listInstances(user.id);
+
+if (instances.length > 0) {
+  return Astro.redirect(`/dashboard/instances/${instances[0].id}/studio`);
+}
+
+// Automatic instance creation if none exists!
+const accounts = await db.listGoogleAccounts(user.id);
+let targetAccountId = accounts[0]?.id;
+
+if (!targetAccountId) {
+  // Auto-seed default test account if needed
+  const testAcc = await db.upsertGoogleAccount({
+    id: 'gacc_auto_1',
+    user_id: user.id,
+    google_email: 'developer.pool@gmail.com',
+    google_account_id: 'google_auto_101',
+    encrypted_refresh_token: 'mock_refresh_token',
+    encrypted_access_token: 'mock_access_token',
+    token_expires_at: Date.now() + 3600000 * 24 * 365,
+    total_space_bytes: 16106127360,
+    used_space_bytes: 1073741824,
+  });
+  targetAccountId = testAcc.id;
+}
+
+// Auto-bootstrap PGlite instance
+const engine = new PGliteEngine();
+await engine.init();
+const snapshotBlob = await engine.dumpSnapshot();
+await engine.close();
+
+const autoInstance = await db.createInstance({
+  id: 'dql_auto_' + crypto.randomUUID().slice(0, 8),
+  user_id: user.id,
+  google_account_id: targetAccountId,
+  name: 'default_db',
+  description: 'Auto-provisioned PostgreSQL instance',
+  status: 'active',
+  gdrive_root_folder_id: 'gdrive_auto_folder',
+  allocated_quota_bytes: 5368709120, // 5 GB
+  current_size_bytes: snapshotBlob.size,
+  last_snapshot_at: new Date().toISOString(),
+  last_synced_at: new Date().toISOString(),
+  pg_version: '16.2',
+  is_encrypted: 0,
+});
+
+return Astro.redirect(`/dashboard/instances/${autoInstance.id}/studio`);
+---

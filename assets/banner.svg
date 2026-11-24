@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradients -->
+    <radialGradient id="bgGlow" cx="50%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#0f2b20" stop-opacity="0.8"/>
+      <stop offset="60%" stop-color="#08090a" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#040506" stop-opacity="1"/>
+    </radialGradient>
+
+    <!-- Neon Green Glows -->
+    <linearGradient id="neonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00e599"/>
+      <stop offset="50%" stop-color="#00ffb2"/>
+      <stop offset="100%" stop-color="#00b377"/>
+    </linearGradient>
+
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d8ff"/>
+      <stop offset="100%" stop-color="#0077b6"/>
+    </linearGradient>
+
+    <linearGradient id="cubeTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+
+    <linearGradient id="cubeLeft" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="100%" stop-color="#030712"/>
+    </linearGradient>
+
+    <linearGradient id="cubeRight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#030712"/>
+    </linearGradient>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="intenseGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="16" result="blur1" />
+      <feGaussianBlur stdDeviation="6" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur1" />
+        <feMergeNode in="blur2" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.03)" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <style>
+    @keyframes pulse {
+      0% { opacity: 0.7; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.02); }
+      100% { opacity: 0.7; transform: scale(1); }
+    }
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+      100% { transform: translateY(0px); }
+    }
+    @keyframes stream {
+      0% { stroke-dashoffset: 100; }
+      100% { stroke-dashoffset: 0; }
+    }
+    .floating-node { animation: float 6s ease-in-out infinite; }
+    .stream-line { stroke-dasharray: 6 10; animation: stream 4s linear infinite; }
+    .glow-pulse { animation: pulse 3s ease-in-out infinite; }
+  </style>
+
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="url(#bgGlow)"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- Subtle ambient circles -->
+  <circle cx="280" cy="210" r="180" fill="#00e599" opacity="0.08" filter="url(#intenseGlow)"/>
+  <circle cx="850" cy="180" r="220" fill="#00d8ff" opacity="0.04" filter="url(#intenseGlow)"/>
+
+  <!-- Left: 3D Isometric Architecture Visual -->
+  <g class="floating-node" transform="translate(180, 110)">
+    <!-- Circuit Base Grid -->
+    <path d="M 120 180 L 220 120 L 120 60 L 20 120 Z" fill="rgba(0, 229, 153, 0.03)" stroke="rgba(0, 229, 153, 0.3)" stroke-width="1.5" stroke-dasharray="4 4"/>
+    
+    <!-- Isometric Cube 1: Google Drive Storage Layer (Base) -->
+    <g transform="translate(0, 50)">
+      <!-- Top -->
+      <polygon points="120,20 190,60 120,100 50,60" fill="url(#cubeTop)" stroke="rgba(0, 229, 153, 0.4)" stroke-width="1.5"/>
+      <!-- Left -->
+      <polygon points="50,60 120,100 120,150 50,110" fill="url(#cubeLeft)" stroke="rgba(0, 229, 153, 0.3)" stroke-width="1.5"/>
+      <!-- Right -->
+      <polygon points="120,100 190,60 190,110 120,150" fill="url(#cubeRight)" stroke="rgba(0, 229, 153, 0.3)" stroke-width="1.5"/>
+      <!-- Layer Tag -->
+      <text x="120" y="65" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" text-anchor="middle">GOOGLE DRIVE 15GB</text>
+    </g>
+
+    <!-- Connector Pulse Streams -->
+    <line x1="120" y1="50" x2="120" y2="10" stroke="#00e599" stroke-width="2.5" class="stream-line" filter="url(#glow)"/>
+    <circle cx="120" cy="30" r="3.5" fill="#00e599" filter="url(#glow)"/>
+
+    <!-- Isometric Cube 2: AES-256-GCM Zero Knowledge Encryption Layer -->
+    <g transform="translate(0, -10)">
+      <polygon points="120,10 180,45 120,80 60,45" fill="url(#cubeTop)" stroke="#00e599" stroke-width="2" filter="url(#glow)"/>
+      <polygon points="60,45 120,80 120,115 60,80" fill="url(#cubeLeft)" stroke="rgba(0, 229, 153, 0.5)" stroke-width="1.5"/>
+      <polygon points="120,80 180,45 180,80 120,115" fill="url(#cubeRight)" stroke="rgba(0, 229, 153, 0.5)" stroke-width="1.5"/>
+      <!-- Security Icon Shield in center -->
+      <path d="M 120 32 Q 128 32 130 38 Q 130 50 120 56 Q 110 50 110 38 Q 112 32 120 32 Z" fill="#00e599" opacity="0.9" filter="url(#glow)"/>
+      <text x="120" y="47" fill="#040506" font-family="monospace" font-size="8" font-weight="900" text-anchor="middle">AES</text>
+    </g>
+
+    <!-- Isometric Cube 3: PGlite & Cloudflare WASM Runtime (Top Core) -->
+    <g transform="translate(0, -70)">
+      <polygon points="120,0 170,30 120,60 70,30" fill="#030712" stroke="#00ffb2" stroke-width="2.5" filter="url(#glow)"/>
+      <polygon points="70,30 120,60 120,85 70,55" fill="#022c22" stroke="#00e599" stroke-width="1.5"/>
+      <polygon points="120,60 170,30 170,55 120,85" fill="#064e3b" stroke="#00e599" stroke-width="1.5"/>
+      <!-- Core glowing badge -->
+      <circle cx="120" cy="30" r="10" fill="url(#neonGrad)" filter="url(#intenseGlow)"/>
+      <text x="120" y="34" fill="#022c22" font-family="-apple-system, sans-serif" font-size="10" font-weight="900" text-anchor="middle">16</text>
+    </g>
+  </g>
+
+  <!-- Right: Branding & Hero Typography -->
+  <g transform="translate(480, 115)">
+    <!-- Category Pill -->
+    <rect x="0" y="0" width="280" height="28" rx="14" fill="rgba(0, 229, 153, 0.1)" stroke="rgba(0, 229, 153, 0.4)" stroke-width="1"/>
+    <circle cx="14" cy="14" r="4.5" fill="#00e599" filter="url(#glow)"/>
+    <text x="28" y="18" fill="#00e599" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" letter-spacing="1.2">SERVERLESS POSTGRES ENGINE</text>
+
+    <!-- Main Title -->
+    <g transform="translate(0, 75)">
+      <text x="0" y="0" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', sans-serif" font-size="64" font-weight="900" letter-spacing="-1.5">
+        Drive<tspan fill="url(#neonGrad)">QL</tspan>
+      </text>
+    </g>
+
+    <!-- Subtitle -->
+    <text x="0" y="112" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="400" line-height="1.5">
+      Virtualizing Google Drive's free 15 GB storage as an authentic
+    </text>
+    <text x="0" y="136" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="600">
+      PostgreSQL database on Cloudflare Workers edge nodes.
+    </text>
+
+    <!-- Feature Tags -->
+    <g transform="translate(0, 175)">
+      <!-- Tag 1 -->
+      <g transform="translate(0, 0)">
+        <rect width="140" height="34" rx="6" fill="#0c0d10" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <text x="14" y="21" fill="#f8fafc" font-family="monospace" font-size="12" font-weight="600">⚡ &lt;1ms PGlite</text>
+      </g>
+
+      <!-- Tag 2 -->
+      <g transform="translate(150, 0)">
+        <rect width="145" height="34" rx="6" fill="#0c0d10" stroke="rgba(0,229,153,0.3)" stroke-width="1"/>
+        <text x="14" y="21" fill="#00e599" font-family="monospace" font-size="12" font-weight="600">🛡️ Row-Level Sec</text>
+      </g>
+
+      <!-- Tag 3 -->
+      <g transform="translate(305, 0)">
+        <rect width="145" height="34" rx="6" fill="#0c0d10" stroke="rgba(0,216,255,0.3)" stroke-width="1"/>
+        <text x="14" y="21" fill="#00d8ff" font-family="monospace" font-size="12" font-weight="600">🔒 AES-256-GCM</text>
+      </g>
+
+      <!-- Tag 4 -->
+      <g transform="translate(460, 0)">
+        <rect width="155" height="34" rx="6" fill="#0c0d10" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <text x="14" y="21" fill="#f8fafc" font-family="monospace" font-size="12" font-weight="600">☁️ Cloudflare Edge</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Bottom Accent Line -->
+  <line x1="0" y1="419" x2="1200" y2="419" stroke="url(#neonGrad)" stroke-width="2" opacity="0.6"/>
+</svg>

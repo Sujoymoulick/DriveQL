@@ -1,0 +1,314 @@
+---
+interface Props {
+  title: string;
+  activeNav?: 'dashboard' | 'accounts' | 'instances' | 'studio' | 'docs';
+  instanceId?: string;
+  instanceName?: string;
+}
+
+const { title, activeNav = 'dashboard', instanceId, instanceName } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | DriveQL</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300e599' stroke-width='2.5'><path d='M4 7c0-1.7 4-3 9-3s9 1.3 9 3v10c0 1.7-4 3-9 3s-9-1.3-9-3V7z'/><path d='M4 12c0 1.7 4 3 9 3s9-1.3 9-3'/></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style is:global>
+      :root {
+        /* Neon Official Color Palette */
+        --neon-bg: #08090a;
+        --neon-surface: #0f1115;
+        --neon-surface-hover: #16181f;
+        --neon-surface-elevated: #1a1d24;
+        --neon-border: #1f2229;
+        --neon-border-light: #2b303b;
+        --neon-border-focus: #00e599;
+
+        --neon-green: #00e599;
+        --neon-green-hover: #00c985;
+        --neon-green-glow: rgba(0, 229, 153, 0.15);
+        --neon-green-text: #000000;
+
+        --neon-cyan: #00b8ff;
+        --neon-amber: #f59e0b;
+        --neon-red: #ef4444;
+
+        --neon-text-primary: #f3f4f6;
+        --neon-text-secondary: #9ca3af;
+        --neon-text-muted: #52525b;
+
+        --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: var(--font-sans);
+        background-color: var(--neon-bg);
+        color: var(--neon-text-primary);
+        line-height: 1.5;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        -webkit-font-smoothing: antialiased;
+        background-image: radial-gradient(circle at 50% 0%, rgba(0, 229, 153, 0.03) 0%, transparent 60%);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      /* Neon Buttons */
+      .neon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.45rem 0.9rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: all 0.15s ease-in-out;
+        user-select: none;
+        white-space: nowrap;
+        font-family: var(--font-sans);
+      }
+
+      .neon-btn-primary {
+        background-color: var(--neon-green);
+        color: #050608;
+        box-shadow: 0 0 12px var(--neon-green-glow);
+      }
+      .neon-btn-primary:hover {
+        background-color: var(--neon-green-hover);
+        box-shadow: 0 0 18px rgba(0, 229, 153, 0.3);
+      }
+
+      .neon-btn-secondary {
+        background-color: var(--neon-surface);
+        border-color: var(--neon-border);
+        color: var(--neon-text-primary);
+      }
+      .neon-btn-secondary:hover {
+        background-color: var(--neon-surface-hover);
+        border-color: var(--neon-border-light);
+      }
+
+      .neon-btn-danger {
+        background-color: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.25);
+        color: #f87171;
+      }
+      .neon-btn-danger:hover {
+        background-color: rgba(239, 68, 68, 0.2);
+      }
+
+      /* Neon Cards */
+      .neon-card {
+        background-color: var(--neon-surface);
+        border: 1px solid var(--neon-border);
+        border-radius: 8px;
+        padding: 1.25rem;
+        transition: border-color 0.15s ease;
+      }
+      .neon-card:hover {
+        border-color: var(--neon-border-light);
+      }
+
+      /* Neon Badges */
+      .neon-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-family: var(--font-mono);
+      }
+      .neon-badge-green {
+        background: rgba(0, 229, 153, 0.1);
+        color: #00e599;
+        border: 1px solid rgba(0, 229, 153, 0.25);
+      }
+      .neon-badge-blue {
+        background: rgba(0, 184, 255, 0.1);
+        color: #00b8ff;
+        border: 1px solid rgba(0, 184, 255, 0.25);
+      }
+      .neon-badge-amber {
+        background: rgba(245, 158, 11, 0.1);
+        color: #f59e0b;
+        border: 1px solid rgba(245, 158, 11, 0.25);
+      }
+      .neon-badge-gray {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--neon-text-secondary);
+        border: 1px solid var(--neon-border);
+      }
+
+      /* Inputs */
+      .neon-input {
+        background: #08090b;
+        border: 1px solid var(--neon-border);
+        border-radius: 6px;
+        padding: 0.55rem 0.75rem;
+        color: var(--neon-text-primary);
+        font-size: 0.875rem;
+        outline: none;
+        transition: border-color 0.15s ease;
+        font-family: var(--font-sans);
+      }
+      .neon-input:focus {
+        border-color: var(--neon-green);
+        box-shadow: 0 0 0 1px var(--neon-green);
+      }
+
+      /* Code Block */
+      .neon-code {
+        font-family: var(--font-mono);
+        background: #060708;
+        border: 1px solid var(--neon-border);
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        font-size: 0.8125rem;
+        overflow-x: auto;
+      }
+
+      /* Custom Scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #252830;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #353a45;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Neon Top Navbar -->
+    <header style="background: rgba(8, 9, 10, 0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--neon-border); position: sticky; top: 0; z-index: 100;">
+      <!-- Row 1: Brand & Project Bar -->
+      <div style="max-width: 1440px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <a href="/dashboard" style="display: flex; align-items: center; gap: 0.6rem; font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em;">
+            <!-- Neon Logo mark -->
+            <div style="width: 26px; height: 26px; border-radius: 6px; background: #00e599; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 14px rgba(0, 229, 153, 0.4);">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5">
+                <path d="M4 7c0-1.7 4-3 9-3s9 1.3 9 3v10c0 1.7-4 3-9 3s-9-1.3-9-3V7z"></path>
+                <path d="M4 12c0 1.7 4 3 9 3s9-1.3 9-3"></path>
+              </svg>
+            </div>
+            <span>Drive<span style="color: var(--neon-green);">QL</span></span>
+          </a>
+
+          <span style="color: var(--neon-border); font-size: 1.1rem;">/</span>
+
+          <!-- Current Project / Instance Badge -->
+          <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem;">
+            <span style="color: var(--neon-text-muted);">project:</span>
+            <span style="font-weight: 600; color: var(--neon-text-primary);">{instanceName || 'driveql-production'}</span>
+            <span class="neon-badge neon-badge-green" style="font-size: 0.6875rem;">Active</span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <!-- Compute Status -->
+          <div style="display: flex; align-items: center; gap: 0.45rem; font-size: 0.75rem; color: var(--neon-text-secondary); background: #111317; border: 1px solid var(--neon-border); padding: 0.25rem 0.65rem; border-radius: 6px;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--neon-green); box-shadow: 0 0 6px var(--neon-green);"></span>
+            <span>Edge Compute: <strong>0.25 CU (WASM)</strong></span>
+          </div>
+
+          <a href="/docs" class="neon-btn neon-btn-secondary" style="font-size: 0.75rem; padding: 0.35rem 0.75rem;">
+            Documentation
+          </a>
+
+          <a href="/dashboard/instances" class="neon-btn neon-btn-primary" style="font-size: 0.75rem; padding: 0.35rem 0.75rem;">
+            + New Database
+          </a>
+        </div>
+      </div>
+
+      <!-- Row 2: Neon Navigation Tabs -->
+      <div style="max-width: 1440px; margin: 0 auto; display: flex; align-items: center; gap: 0.25rem; padding: 0 1.5rem; overflow-x: auto;">
+        <a 
+          href="/dashboard" 
+          style={`padding: 0.6rem 0.85rem; font-size: 0.8125rem; font-weight: 500; border-bottom: 2px solid ${activeNav === 'dashboard' ? 'var(--neon-green)' : 'transparent'}; color: ${activeNav === 'dashboard' ? '#ffffff' : 'var(--neon-text-secondary)'}; transition: color 0.15s ease; display: flex; align-items: center; gap: 0.45rem;`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          Dashboard
+        </a>
+
+        <a 
+          href={instanceId ? `/dashboard/instances/${instanceId}/studio` : '/dashboard/studio'} 
+          style={`padding: 0.6rem 0.85rem; font-size: 0.8125rem; font-weight: 500; border-bottom: 2px solid ${activeNav === 'studio' ? 'var(--neon-green)' : 'transparent'}; color: ${activeNav === 'studio' ? '#ffffff' : 'var(--neon-text-secondary)'}; transition: color 0.15s ease; display: flex; align-items: center; gap: 0.45rem;`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+          SQL Editor
+        </a>
+
+        <a 
+          href="/dashboard/instances" 
+          style={`padding: 0.6rem 0.85rem; font-size: 0.8125rem; font-weight: 500; border-bottom: 2px solid ${activeNav === 'instances' ? 'var(--neon-green)' : 'transparent'}; color: ${activeNav === 'instances' ? '#ffffff' : 'var(--neon-text-secondary)'}; transition: color 0.15s ease; display: flex; align-items: center; gap: 0.45rem;`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+          Databases
+        </a>
+
+        <a 
+          href="/dashboard/accounts" 
+          style={`padding: 0.6rem 0.85rem; font-size: 0.8125rem; font-weight: 500; border-bottom: 2px solid ${activeNav === 'accounts' ? 'var(--neon-green)' : 'transparent'}; color: ${activeNav === 'accounts' ? '#ffffff' : 'var(--neon-text-secondary)'}; transition: color 0.15s ease; display: flex; align-items: center; gap: 0.45rem;`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          Storage & Drive Pool
+        </a>
+
+        <a 
+          href="/docs" 
+          style={`padding: 0.6rem 0.85rem; font-size: 0.8125rem; font-weight: 500; border-bottom: 2px solid ${activeNav === 'docs' ? 'var(--neon-green)' : 'transparent'}; color: ${activeNav === 'docs' ? '#ffffff' : 'var(--neon-text-secondary)'}; transition: color 0.15s ease; display: flex; align-items: center; gap: 0.45rem;`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+          Documentation
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main style="flex: 1; max-width: 1440px; width: 100%; margin: 0 auto; padding: 1.75rem 1.5rem;">
+      <slot />
+    </main>
+
+    <!-- Minimal Neon Footer -->
+    <footer style="border-top: 1px solid var(--neon-border); padding: 1.25rem 1.5rem; font-size: 0.75rem; color: var(--neon-text-muted);">
+      <div style="max-width: 1440px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <span>DriveQL • Serverless Postgres over Google Drive</span>
+          <span>•</span>
+          <span style="color: var(--neon-green);">100% Free Resources</span>
+        </div>
+        <div>PGlite v16.2 WebAssembly • Cloudflare Edge Network</div>
+      </div>
+    </footer>
+  </body>
+</html>

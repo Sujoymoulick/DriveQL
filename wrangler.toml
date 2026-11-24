@@ -1,0 +1,19 @@
+name = "driveql"
+main = "./dist/_worker.js/index.js"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "driveql-d1"
+database_id = "local-d1-placeholder"
+
+# Environment Variables
+[vars]
+APP_URL = "http://localhost:4321"
+
+# Production secrets to set via `npx wrangler secret put`:
+# - GOOGLE_CLIENT_ID
+# - GOOGLE_CLIENT_SECRET
+# - ENCRYPTION_SECRET (32-byte hex for AES-256-GCM)

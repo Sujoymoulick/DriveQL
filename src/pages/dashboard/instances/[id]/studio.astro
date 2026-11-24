@@ -1,0 +1,1065 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import { getPlatformDB } from '../../../../lib/db';
+import { getOrInitEngine } from '../../../../lib/pglite-engine';
+
+const { id } = Astro.params;
+const db = getPlatformDB(Astro.locals);
+
+if (!id) {
+  return Astro.redirect('/dashboard/studio');
+}
+
+const instance = await db.getInstance(id);
+if (!instance) {
+  return Astro.redirect('/dashboard/studio');
+}
+
+const allInstances = await db.listInstances(instance.user_id);
+const account = await db.getGoogleAccount(instance.google_account_id);
+
+// Inspect current tables on initial load
+let tables: any[] = [];
+try {
+  const engine = await getOrInitEngine(instance.id);
+  tables = await engine.inspectSchema();
+} catch (e) {
+  console.error('Initial schema inspection error:', e);
+}
+
+const quotaGb = Math.round((instance.allocated_quota_bytes / 1024 / 1024 / 1024) * 10) / 10;
+const currentSizeMb = Math.round((instance.current_size_bytes / 1024 / 1024) * 100) / 100;
+---
+
+<Layout title={`${instance.name} - Neon SQL Editor`} activeNav="studio" instanceId={instance.id} instanceName={instance.name}>
+  <!-- Neon Editor Top Control Bar -->
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; background: var(--neon-surface); border: 1px solid var(--neon-border); border-radius: 8px; padding: 0.55rem 1rem; flex-wrap: wrap; gap: 0.75rem;">
+    <!-- Left: Target Selector & Environment -->
+    <div style="display: flex; align-items: center; gap: 0.85rem;">
+      <div style="display: flex; align-items: center; gap: 0.45rem;">
+        <span style="color: var(--neon-text-muted); font-size: 0.8125rem;">Database:</span>
+        <select 
+          id="dbSelector"
+          style="background: #08090b; border: 1px solid var(--neon-border); color: #fff; border-radius: 6px; padding: 0.35rem 0.65rem; font-size: 0.8125rem; font-weight: 600; outline: none; cursor: pointer;"
+        >
+          {allInstances.map((inst) => (
+            <option value={inst.id} selected={inst.id === instance.id}>
+              {inst.name}
+            </option>
+          ))}
+          <option value="__NEW__">+ Provision New Database...</option>
+        </select>
+      </div>
+
+      <span style="color: var(--neon-border);">|</span>
+
+      <div style="display: flex; align-items: center; gap: 0.45rem; font-size: 0.75rem; color: var(--neon-text-secondary);">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--neon-green); box-shadow: 0 0 6px var(--neon-green);"></span>
+        <span>Branch: <strong style="color: #fff;">main</strong></span>
+        <span class="neon-badge neon-badge-gray" style="font-size: 0.6875rem;">
+          {quotaGb} GB Node
+        </span>
+      </div>
+
+      <span style="color: var(--neon-border);">|</span>
+
+      <!-- Neon RLS Role & Identity Simulator -->
+      <div style="display: flex; align-items: center; gap: 0.35rem;">
+        <span style="color: var(--neon-text-muted); font-size: 0.75rem;" title="Test PostgreSQL Row-Level Security policies under different user identities">
+          RLS Identity:
+        </span>
+        <select 
+          id="rlsRoleSelector"
+          style="background: #08090b; border: 1px solid rgba(0,229,153,0.3); color: var(--neon-green); border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.725rem; font-weight: 600; outline: none; cursor: pointer; font-family: var(--font-mono);"
+        >
+          <option value="admin:admin_root">Role: admin (Bypass RLS)</option>
+          <option value="authenticated:usr_alice" selected>User: usr_alice (Tenant A)</option>
+          <option value="authenticated:usr_bob">User: usr_bob (Tenant B)</option>
+          <option value="anon:anonymous">Role: anon (Public/Guest)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Right: Actions & Run Button -->
+    <div style="display: flex; align-items: center; gap: 0.6rem;">
+      <span id="syncIndicator" style="font-size: 0.75rem; color: var(--neon-text-muted); display: flex; align-items: center; gap: 0.35rem; margin-right: 0.25rem;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--neon-green);"></span>
+        <span>Drive Synced</span>
+      </span>
+
+      <button id="studioFlushBtn" class="neon-btn neon-btn-secondary" style="font-size: 0.75rem; padding: 0.35rem 0.75rem;" title="Checkpoint and flush Write-Ahead Log to Google Drive">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        Flush WAL
+      </button>
+
+      <button id="formatBtn" class="neon-btn neon-btn-secondary" style="font-size: 0.75rem; padding: 0.35rem 0.75rem;" title="Format SQL query">
+        Format
+      </button>
+
+      <!-- Iconic Neon Green Run Button -->
+      <button id="runBtn" class="neon-btn neon-btn-primary" style="padding: 0.45rem 1.25rem; font-size: 0.8125rem; font-weight: 700; box-shadow: 0 0 14px rgba(0, 229, 153, 0.35);">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        Run <span style="font-size: 0.7rem; opacity: 0.75; font-weight: 600; margin-left: 0.25rem;">⌘⏎</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Studio Split Container -->
+  <div style="display: grid; grid-template-columns: 280px 1fr; gap: 1rem; min-height: 680px;">
+    <!-- Left: Neon Schema Browser & Templates Drawer -->
+    <div class="neon-card" style="padding: 0; display: flex; flex-direction: column; overflow: hidden; background: #0b0c10; border-color: var(--neon-border); max-height: calc(100vh - 170px);">
+      <!-- Left Panel Navigation Switcher -->
+      <div style="display: flex; border-bottom: 1px solid var(--neon-border); background: #08090c;">
+        <button id="sidebarTabTables" class="sidebar-tab active" style="flex: 1; padding: 0.6rem 0.35rem; font-size: 0.75rem; font-weight: 600; background: #0e1014; border: none; border-bottom: 2px solid var(--neon-green); color: #fff; cursor: pointer;">
+          Tables ({tables.length})
+        </button>
+        <button id="sidebarTabSnippets" class="sidebar-tab" style="flex: 1; padding: 0.6rem 0.35rem; font-size: 0.75rem; font-weight: 500; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--neon-text-muted); cursor: pointer;">
+          ⚡ Snippets
+        </button>
+        <button id="sidebarTabRls" class="sidebar-tab" style="flex: 1; padding: 0.6rem 0.35rem; font-size: 0.75rem; font-weight: 500; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--neon-text-muted); cursor: pointer;">
+          🛡️ RLS
+        </button>
+      </div>
+
+      <!-- Left View 1: Tables Schema Browser -->
+      <div id="sidebarViewTables" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column;">
+        <!-- Filter Search Bar -->
+        <div style="padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--neon-border);">
+          <div style="display: flex; align-items: center; background: #060709; border: 1px solid var(--neon-border); border-radius: 5px; padding: 0.25rem 0.55rem; gap: 0.4rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--neon-text-muted)" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input 
+              type="text" 
+              id="tableSearch" 
+              placeholder="Search tables..." 
+              style="width: 100%; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none;"
+            />
+          </div>
+        </div>
+
+        <!-- Tables Tree -->
+        <div id="tablesTree" style="flex: 1; overflow-y: auto; padding: 0.4rem 0;">
+          <div style="padding: 0.35rem 0.85rem; font-size: 0.6875rem; font-weight: 600; color: var(--neon-text-muted); text-transform: uppercase; letter-spacing: 0.05em; display: flex; justify-content: space-between; align-items: center;">
+            <span>schema: public</span>
+            <button id="refreshSchemaBtn" style="background: none; border: none; color: var(--neon-green); cursor: pointer; font-size: 0.6875rem;" title="Refresh Schema">
+              Refresh
+            </button>
+          </div>
+
+          {tables.length === 0 ? (
+            <div style="padding: 2.5rem 1rem; text-align: center; color: var(--neon-text-muted); font-size: 0.75rem;">
+              No public tables found.<br />
+              <button onclick="loadTemplate('create_users')" class="neon-btn neon-btn-secondary" style="font-size: 0.7rem; margin-top: 0.75rem; padding: 0.25rem 0.6rem;">
+                + Create Table
+              </button>
+            </div>
+          ) : (
+            tables.map((t) => (
+              <div class="table-node" data-table={t.tableName} style="margin-bottom: 0.25rem;">
+                <div 
+                  class="table-row-item"
+                  style="padding: 0.45rem 0.85rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-radius: 5px; margin: 0 0.35rem; transition: all 0.1s ease;"
+                  onclick={`quickSelectTable('${t.tableName}')`}
+                  title="Click to query this table"
+                >
+                  <div style="display: flex; align-items: center; gap: 0.45rem; font-size: 0.8125rem; font-weight: 600;">
+                    <span style="color: var(--neon-green);">▦</span>
+                    <span style="color: #f3f4f6;">{t.tableName}</span>
+                  </div>
+                  <span class="neon-badge neon-badge-gray" style="font-size: 0.65rem; padding: 0.05rem 0.35rem;">
+                    {t.rowCount} {t.rowCount === 1 ? 'row' : 'rows'}
+                  </span>
+                </div>
+
+                <!-- Expanded Columns List -->
+                <div class="table-cols" style="padding: 0.25rem 0.85rem 0.4rem 1.85rem; font-size: 0.7rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                  {t.columns.map((c: any) => (
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono);">
+                      <span style="color: var(--neon-text-secondary);">{c.column_name}</span>
+                      <span style="color: var(--neon-text-muted); font-size: 0.65rem; background: rgba(255,255,255,0.03); padding: 0.05rem 0.25rem; border-radius: 3px;">
+                        {c.data_type}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <!-- Left View 2: SQL Snippets & Templates Drawer -->
+      <div id="sidebarViewSnippets" style="display: none; flex: 1; overflow-y: auto; padding: 0.75rem 0.65rem; flex-direction: column; gap: 0.5rem;">
+        <div style="font-size: 0.75rem; color: var(--neon-text-muted); margin-bottom: 0.25rem; padding: 0 0.25rem;">
+          Click any template to load and run immediately:
+        </div>
+
+        <div class="template-card" onclick="loadTemplate('welcome')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: #fff; margin-bottom: 0.2rem;">🚀 Quick Start Query</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">Select from default welcome table</div>
+        </div>
+
+        <div class="template-card" onclick="loadTemplate('products')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: #fff; margin-bottom: 0.2rem;">🛍️ Query Products</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">Filter & order items with inventory</div>
+        </div>
+
+        <div class="template-card" onclick="loadTemplate('create_users')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: var(--neon-cyan); margin-bottom: 0.2rem;">👥 Create Users Table</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">Table schema with constraints & indexes</div>
+        </div>
+
+        <div class="template-card" onclick="loadTemplate('analytics')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: #fff; margin-bottom: 0.2rem;">📊 Aggregation & Analytics</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">SUM, AVG, and GROUP BY statistics</div>
+        </div>
+
+        <div class="template-card" onclick="loadTemplate('pgvector')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: var(--neon-green); margin-bottom: 0.2rem;">🧠 Vector Embeddings</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">AI embeddings table with cosine distance</div>
+        </div>
+      </div>
+
+      <!-- Left View 3: RLS Security Policies Drawer -->
+      <div id="sidebarViewRls" style="display: none; flex: 1; overflow-y: auto; padding: 0.75rem 0.65rem; flex-direction: column; gap: 0.6rem;">
+        <div style="background: rgba(0,229,153,0.06); border: 1px solid rgba(0,229,153,0.2); border-radius: 6px; padding: 0.65rem; font-size: 0.725rem; color: var(--neon-text-secondary); line-height: 1.5;">
+          <strong style="color: var(--neon-green);">PostgreSQL RLS:</strong> Restricts row access based on client session context (<code style="color:#fff;">app.current_user_id</code>). Change identity above to test!
+        </div>
+
+        <!-- Live Active Policies & Tables -->
+        <div style="display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.2rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: #fff;">Active RLS Tables & Policies:</span>
+            <button id="refreshPoliciesBtn" style="background: none; border: none; color: var(--neon-green); font-size: 0.6875rem; cursor: pointer; padding: 0;" title="Reload policies">
+              Refresh
+            </button>
+          </div>
+          <div id="livePoliciesList" style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.725rem;">
+            <div style="color: var(--neon-text-muted); font-style: italic;">Loading security policies...</div>
+          </div>
+        </div>
+
+        <div style="font-size: 0.75rem; font-weight: 600; color: #fff; margin-top: 0.4rem;">RLS Policy Blueprints:</div>
+
+        <div class="template-card" onclick="loadTemplate('rls_tenant_isolation')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: var(--neon-green); margin-bottom: 0.2rem;">🛡️ Tenant Row Isolation</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">Isolate documents by current_user_id</div>
+        </div>
+
+        <div class="template-card" onclick="loadTemplate('rls_public_read')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: var(--neon-cyan); margin-bottom: 0.2rem;">🔒 Public Read / Author Write</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">Anyone can read; only owner can edit</div>
+        </div>
+
+        <div class="template-card" onclick="loadTemplate('rls_rbac')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: #fff; margin-bottom: 0.2rem;">👑 Role-Based Access (RBAC)</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">Bypass or special access for admin role</div>
+        </div>
+
+        <div class="template-card" onclick="loadTemplate('rls_inspect')" style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: all 0.15s ease;">
+          <div style="font-size: 0.8125rem; font-weight: 600; color: var(--neon-amber); margin-bottom: 0.2rem;">🔍 Inspect Active Policies</div>
+          <div style="font-size: 0.7rem; color: var(--neon-text-muted);">Query pg_policies system catalog</div>
+        </div>
+      </div>
+
+      <!-- Google Drive Volume Telemetry Footer (Left Sidebar Bottom) -->
+      <div style="padding: 0.75rem 0.85rem; border-top: 1px solid var(--neon-border); background: #08090c;">
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: 0.35rem;">
+          <span style="color: var(--neon-text-muted); display: flex; align-items: center; gap: 0.3rem;">
+            📁 Host Drive:
+          </span>
+          <span style="color: #fff; font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            {account?.google_email || 'test.developer@gmail.com'}
+          </span>
+        </div>
+        <!-- Progress mini-bar -->
+        <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 9999px; overflow: hidden; margin-bottom: 0.35rem;">
+          <div style="width: 25%; height: 100%; background: var(--neon-green); border-radius: 9999px;"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.6875rem; color: var(--neon-text-muted);">
+          <span>{quotaGb} GB Volume</span>
+          <span style="color: var(--neon-green);">Zero Invoices</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Neon SQL Workstation -->
+    <div style="display: flex; flex-direction: column; gap: 0.85rem; overflow: hidden;">
+      <!-- Neon Query Tabs Bar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; background: #0c0d10; border: 1px solid var(--neon-border); border-radius: 8px 8px 0 0; padding: 0.35rem 0.75rem 0; border-bottom: none;">
+        <div id="tabHeaders" style="display: flex; align-items: center; gap: 0.35rem;">
+          <div class="query-tab active-tab" data-tab="1" onclick="switchTab(1)" style="padding: 0.45rem 0.85rem; font-size: 0.78125rem; font-weight: 600; border-radius: 6px 6px 0 0; background: #121418; border: 1px solid var(--neon-border); border-bottom: 1px solid #121418; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; color: #fff;">
+            <span>Query 1</span>
+          </div>
+          <div class="query-tab" data-tab="2" onclick="switchTab(2)" style="padding: 0.45rem 0.85rem; font-size: 0.78125rem; font-weight: 500; border-radius: 6px 6px 0 0; border: 1px solid transparent; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; color: var(--neon-text-secondary);">
+            <span>Query 2</span>
+          </div>
+          <button id="addTabBtn" style="background: none; border: none; color: var(--neon-text-muted); padding: 0.3rem 0.5rem; cursor: pointer; font-size: 1rem; line-height: 1;" title="New Query Tab">
+            +
+          </button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.6rem; padding-bottom: 0.35rem;">
+          <button id="clearEditorBtn" style="background: none; border: none; color: var(--neon-text-muted); font-size: 0.75rem; cursor: pointer;">
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <!-- SQL Textarea Area with Neon Styling -->
+      <div class="neon-card" style="padding: 0; border-radius: 0 0 8px 8px; border-top: 1px solid var(--neon-border); overflow: hidden; display: flex; flex-direction: column; background: #07080a;">
+        <div style="display: flex; min-height: 180px;">
+          <!-- Line Numbers Gutter -->
+          <div id="lineGutter" style="width: 44px; padding: 0.85rem 0.4rem; background: #050607; border-right: 1px solid var(--neon-border); color: #353842; font-family: var(--font-mono); font-size: 0.8125rem; text-align: right; user-select: none; line-height: 1.6;">
+            1<br />2<br />3<br />4<br />5<br />6
+          </div>
+
+          <!-- Active SQL Editor Area -->
+          <textarea
+            id="sqlInput"
+            rows="8"
+            spellcheck="false"
+            placeholder="Write PostgreSQL query here... (e.g. SELECT * FROM welcome;)"
+            style="flex: 1; background: transparent; border: none; outline: none; color: #f3f4f6; font-family: var(--font-mono); font-size: 0.875rem; padding: 0.85rem 1rem; resize: vertical; line-height: 1.6; tab-size: 2;"
+          >SELECT * FROM welcome;</textarea>
+        </div>
+      </div>
+
+      <!-- Results & Visualizer Container -->
+      <div class="neon-card" style="flex: 1; padding: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 320px; background: #08090c; border-color: var(--neon-border);">
+        <!-- Ribbon with View Switcher (Grid vs JSON vs Messages) -->
+        <div style="padding: 0.45rem 0.85rem; background: #0c0d10; border-bottom: 1px solid var(--neon-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <!-- Left: View Mode Pills -->
+          <div style="display: flex; align-items: center; gap: 0.35rem;">
+            <button id="viewGridBtn" class="neon-btn neon-btn-secondary view-toggle-btn active" style="font-size: 0.725rem; padding: 0.2rem 0.55rem; border-color: var(--neon-green); color: #fff;">
+              ▦ Table Grid
+            </button>
+            <button id="viewJsonBtn" class="neon-btn neon-btn-secondary view-toggle-btn" style="font-size: 0.725rem; padding: 0.2rem 0.55rem;">
+              { } JSON View
+            </button>
+            <button id="viewMsgBtn" class="neon-btn neon-btn-secondary view-toggle-btn" style="font-size: 0.725rem; padding: 0.2rem 0.55rem;">
+              ℹ Messages
+            </button>
+          </div>
+
+          <!-- Right: Execution Telemetry & Exports -->
+          <div style="display: flex; align-items: center; gap: 0.65rem;">
+            <div id="telemetryPill" style="display: none; align-items: center; gap: 0.45rem; font-size: 0.75rem;">
+              <span id="telemetryTime" style="color: var(--neon-green); font-family: var(--font-mono); font-weight: 600;">⚡ 0.00ms</span>
+              <span style="color: var(--neon-border);">•</span>
+              <span id="telemetryRows" style="color: var(--neon-text-primary); font-family: var(--font-mono);">0 rows</span>
+            </div>
+
+            <div style="display: flex; gap: 0.35rem;">
+              <button id="copyResultsBtn" class="neon-btn neon-btn-secondary" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;" title="Copy results">
+                Copy
+              </button>
+              <button id="exportCsvBtn" class="neon-btn neon-btn-secondary" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">
+                CSV
+              </button>
+              <button id="exportJsonBtn" class="neon-btn neon-btn-secondary" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">
+                JSON
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Error Alert -->
+        <div id="errorBox" style="display: none; background: rgba(239, 68, 68, 0.08); border-bottom: 1px solid rgba(239, 68, 68, 0.25); padding: 0.75rem 1rem; color: #f87171; font-family: var(--font-mono); font-size: 0.8125rem;">
+        </div>
+
+        <!-- Mode 1: Table Grid View -->
+        <div id="gridWrapper" style="flex: 1; overflow: auto;">
+          <div id="emptyResultNotice" style="text-align: center; color: var(--neon-text-muted); font-size: 0.8125rem; padding: 4.5rem 1rem;">
+            <div style="font-size: 1.75rem; margin-bottom: 0.5rem; opacity: 0.6;">⚡</div>
+            Click <strong>Run</strong> or press <code style="color: var(--neon-green); font-weight: 600;">⌘ + Enter</code> to query your Google Drive database.
+          </div>
+
+          <table id="neonGrid" style="display: none; width: 100%; border-collapse: collapse; font-size: 0.8125rem; text-align: left;">
+            <thead id="gridHead" style="background: #0e1014; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--neon-border);"></thead>
+            <tbody id="gridBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Mode 2: JSON View -->
+        <div id="jsonWrapper" style="display: none; flex: 1; overflow: auto; padding: 1rem; background: #060709;">
+          <pre id="jsonDisplay" style="font-family: var(--font-mono); font-size: 0.8125rem; color: #6ee7b7; white-space: pre-wrap; word-break: break-word;"></pre>
+        </div>
+
+        <!-- Mode 3: Messages View -->
+        <div id="messagesWrapper" style="display: none; flex: 1; overflow: auto; padding: 1rem; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--neon-text-secondary); background: #060709;">
+          <div id="messagesDisplay">Execution log ready. No queries run yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline define:vars={{ instanceId: instance.id }}>
+    const sqlInput = document.getElementById('sqlInput');
+    const runBtn = document.getElementById('runBtn');
+    const lineGutter = document.getElementById('lineGutter');
+    const telemetryPill = document.getElementById('telemetryPill');
+    const telemetryRows = document.getElementById('telemetryRows');
+    const telemetryTime = document.getElementById('telemetryTime');
+    const errorBox = document.getElementById('errorBox');
+    const emptyNotice = document.getElementById('emptyResultNotice');
+    const neonGrid = document.getElementById('neonGrid');
+    const gridHead = document.getElementById('gridHead');
+    const gridBody = document.getElementById('gridBody');
+    const studioFlushBtn = document.getElementById('studioFlushBtn');
+    const syncIndicator = document.getElementById('syncIndicator');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const exportJsonBtn = document.getElementById('exportJsonBtn');
+    const copyResultsBtn = document.getElementById('copyResultsBtn');
+    const clearEditorBtn = document.getElementById('clearEditorBtn');
+    const formatBtn = document.getElementById('formatBtn');
+    const refreshSchemaBtn = document.getElementById('refreshSchemaBtn');
+    const tableSearch = document.getElementById('tableSearch');
+    const dbSelector = document.getElementById('dbSelector');
+
+    // Views
+    const viewGridBtn = document.getElementById('viewGridBtn');
+    const viewJsonBtn = document.getElementById('viewJsonBtn');
+    const viewMsgBtn = document.getElementById('viewMsgBtn');
+    const gridWrapper = document.getElementById('gridWrapper');
+    const jsonWrapper = document.getElementById('jsonWrapper');
+    const messagesWrapper = document.getElementById('messagesWrapper');
+    const jsonDisplay = document.getElementById('jsonDisplay');
+    const messagesDisplay = document.getElementById('messagesDisplay');
+
+    // Sidebar tab buttons
+    const sidebarTabTables = document.getElementById('sidebarTabTables');
+    const sidebarTabSnippets = document.getElementById('sidebarTabSnippets');
+    const sidebarTabRls = document.getElementById('sidebarTabRls');
+    const sidebarViewTables = document.getElementById('sidebarViewTables');
+    const sidebarViewSnippets = document.getElementById('sidebarViewSnippets');
+    const sidebarViewRls = document.getElementById('sidebarViewRls');
+    const rlsRoleSelector = document.getElementById('rlsRoleSelector');
+
+    let currentRows = [];
+    let currentFields = [];
+
+    // Switch between Tables, Templates, and RLS sidebar
+    function switchSidebarTab(tabName) {
+      [sidebarTabTables, sidebarTabSnippets, sidebarTabRls].forEach(t => {
+        if (!t) return;
+        t.style.borderBottom = '2px solid transparent';
+        t.style.color = 'var(--neon-text-muted)';
+        t.style.background = 'transparent';
+      });
+      [sidebarViewTables, sidebarViewSnippets, sidebarViewRls].forEach(v => {
+        if (!v) return;
+        v.style.display = 'none';
+      });
+
+      if (tabName === 'tables' && sidebarTabTables && sidebarViewTables) {
+        sidebarTabTables.style.borderBottom = '2px solid var(--neon-green)';
+        sidebarTabTables.style.color = '#fff';
+        sidebarTabTables.style.background = '#0e1014';
+        sidebarViewTables.style.display = 'flex';
+      } else if (tabName === 'snippets' && sidebarTabSnippets && sidebarViewSnippets) {
+        sidebarTabSnippets.style.borderBottom = '2px solid var(--neon-green)';
+        sidebarTabSnippets.style.color = '#fff';
+        sidebarTabSnippets.style.background = '#0e1014';
+        sidebarViewSnippets.style.display = 'flex';
+      } else if (tabName === 'rls' && sidebarTabRls && sidebarViewRls) {
+        sidebarTabRls.style.borderBottom = '2px solid var(--neon-green)';
+        sidebarTabRls.style.color = '#fff';
+        sidebarTabRls.style.background = '#0e1014';
+        sidebarViewRls.style.display = 'flex';
+        loadActivePolicies();
+      }
+    }
+
+    if (sidebarTabTables) sidebarTabTables.onclick = () => switchSidebarTab('tables');
+    if (sidebarTabSnippets) sidebarTabSnippets.onclick = () => switchSidebarTab('snippets');
+    if (sidebarTabRls) sidebarTabRls.onclick = () => switchSidebarTab('rls');
+
+    // Switch between Grid, JSON, and Messages view
+    function activateView(view) {
+      [viewGridBtn, viewJsonBtn, viewMsgBtn].forEach(b => {
+        b.style.borderColor = 'var(--neon-border)';
+        b.style.color = 'var(--neon-text-secondary)';
+      });
+
+      gridWrapper.style.display = 'none';
+      jsonWrapper.style.display = 'none';
+      messagesWrapper.style.display = 'none';
+
+      if (view === 'grid') {
+        viewGridBtn.style.borderColor = 'var(--neon-green)';
+        viewGridBtn.style.color = '#fff';
+        gridWrapper.style.display = 'block';
+      } else if (view === 'json') {
+        viewJsonBtn.style.borderColor = 'var(--neon-green)';
+        viewJsonBtn.style.color = '#fff';
+        jsonWrapper.style.display = 'block';
+        jsonDisplay.innerText = JSON.stringify(currentRows, null, 2);
+      } else if (view === 'msg') {
+        viewMsgBtn.style.borderColor = 'var(--neon-green)';
+        viewMsgBtn.style.color = '#fff';
+        messagesWrapper.style.display = 'block';
+      }
+    }
+
+    if (viewGridBtn) viewGridBtn.onclick = () => activateView('grid');
+    if (viewJsonBtn) viewJsonBtn.onclick = () => activateView('json');
+    if (viewMsgBtn) viewMsgBtn.onclick = () => activateView('msg');
+
+    // Snippets / Templates loader
+    const sqlTemplates = {
+      welcome: 'SELECT * FROM welcome;',
+      products: 'SELECT id, title, price, inventory\nFROM products\nORDER BY price DESC;',
+      create_users: `CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(150) UNIQUE NOT NULL,
+  role VARCHAR(20) DEFAULT 'member',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO users (name, email, role) VALUES
+  ('Alex Rivers', 'alex@driveql.io', 'admin'),
+  ('Sarah Chen', 'sarah@driveql.io', 'developer');
+
+SELECT * FROM users;`,
+      analytics: `SELECT 
+  COUNT(*)::int as total_products,
+  ROUND(AVG(price), 2) as avg_price,
+  SUM(inventory)::int as total_inventory
+FROM products;`,
+      pgvector: `CREATE TABLE IF NOT EXISTS document_embeddings (
+  id SERIAL PRIMARY KEY,
+  content TEXT NOT NULL,
+  embedding REAL[]
+);
+
+INSERT INTO document_embeddings (content, embedding) VALUES
+  ('Serverless Postgres on Google Drive', ARRAY[0.12, -0.45, 0.88]),
+  ('Cloudflare Edge Worker Isolate', ARRAY[0.05, 0.91, -0.22]);
+
+SELECT id, content FROM document_embeddings;`,
+
+      rls_tenant_isolation: `-- 1. Create table with tenant ownership
+CREATE TABLE IF NOT EXISTS tenant_documents (
+  id SERIAL PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  title VARCHAR(150) NOT NULL,
+  secret_content TEXT NOT NULL
+);
+
+-- 2. Enable PostgreSQL Row-Level Security
+ALTER TABLE tenant_documents ENABLE ROW LEVEL SECURITY;
+
+-- 3. Policy: users only see and edit their own tenant records!
+DROP POLICY IF EXISTS isolate_tenants ON tenant_documents;
+CREATE POLICY isolate_tenants ON tenant_documents
+  FOR ALL
+  TO PUBLIC
+  USING (tenant_id = current_setting('app.current_user_id', true));
+
+-- 4. Seed records for Alice and Bob
+INSERT INTO tenant_documents (tenant_id, title, secret_content) VALUES
+  ('usr_alice', 'Alice Secret Strategy', 'Confidential to Alice only!'),
+  ('usr_bob', 'Bob Financial Ledger', 'Confidential to Bob only!');
+
+-- 5. Query: Automatically filtered to your current RLS Identity in the top bar!
+SELECT * FROM tenant_documents;`,
+
+      rls_public_read: `-- 1. Articles table
+CREATE TABLE IF NOT EXISTS articles (
+  id SERIAL PRIMARY KEY,
+  author_id TEXT NOT NULL,
+  title VARCHAR(200) NOT NULL,
+  published BOOLEAN DEFAULT true
+);
+ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
+
+-- 2. Anyone can read published posts
+DROP POLICY IF EXISTS public_read ON articles;
+CREATE POLICY public_read ON articles FOR SELECT USING (published = true);
+
+-- 3. Only the author can insert/edit their post
+DROP POLICY IF EXISTS author_write ON articles;
+CREATE POLICY author_write ON articles FOR INSERT 
+  WITH CHECK (author_id = current_setting('app.current_user_id', true));
+
+INSERT INTO articles (author_id, title) VALUES ('usr_alice', 'Announcing DriveQL 1.0 with RLS');
+SELECT * FROM articles;`,
+
+      rls_rbac: `-- Admin Override Policy: Allows users with app.user_role = 'admin' full access
+DROP POLICY IF EXISTS admin_full_access ON tenant_documents;
+CREATE POLICY admin_full_access ON tenant_documents
+  FOR ALL
+  TO PUBLIC
+  USING (current_setting('app.user_role', true) = 'admin');
+
+-- Switch RLS Identity in top bar to "admin" to see all rows!
+SELECT * FROM tenant_documents;`,
+
+      rls_inspect: `-- Inspect active Row-Level Security policies in PostgreSQL
+SELECT 
+  schemaname, 
+  tablename, 
+  policyname, 
+  roles, 
+  cmd, 
+  qual 
+FROM pg_policies 
+WHERE schemaname = 'public';`,
+    };
+
+    window.loadTemplate = function(key) {
+      if (sqlTemplates[key]) {
+        sqlInput.value = sqlTemplates[key];
+        updateLineNumbers();
+        runQuery();
+      }
+    };
+
+    // Database switcher with "+ Create New Instance"
+    if (dbSelector) {
+      dbSelector.onchange = () => {
+        if (dbSelector.value === '__NEW__') {
+          window.location.href = '/dashboard/instances';
+        } else {
+          window.location.href = `/dashboard/instances/${dbSelector.value}/studio`;
+        }
+      };
+    }
+
+    // Multi-tab query state
+    const tabsData = {
+      1: 'SELECT * FROM welcome;',
+      2: 'SELECT * FROM products;',
+    };
+    let activeTabId = 1;
+
+    window.switchTab = function(tabId) {
+      tabsData[activeTabId] = sqlInput.value;
+      activeTabId = tabId;
+      sqlInput.value = tabsData[tabId] || '';
+      updateLineNumbers();
+
+      document.querySelectorAll('.query-tab').forEach(tab => {
+        const id = tab.getAttribute('data-tab');
+        if (id == tabId) {
+          tab.style.background = '#121418';
+          tab.style.border = '1px solid var(--neon-border)';
+          tab.style.borderBottom = '1px solid #121418';
+          tab.style.color = '#fff';
+        } else {
+          tab.style.background = 'transparent';
+          tab.style.border = '1px solid transparent';
+          tab.style.color = 'var(--neon-text-secondary)';
+        }
+      });
+    };
+
+    const addTabBtn = document.getElementById('addTabBtn');
+    if (addTabBtn) {
+      addTabBtn.onclick = () => {
+        const nextId = Object.keys(tabsData).length + 1;
+        tabsData[nextId] = `-- Tab ${nextId}\nSELECT * FROM products LIMIT 10;`;
+        
+        const newTab = document.createElement('div');
+        newTab.className = 'query-tab';
+        newTab.setAttribute('data-tab', nextId);
+        newTab.onclick = () => switchTab(nextId);
+        newTab.style.cssText = 'padding: 0.45rem 0.85rem; font-size: 0.78125rem; font-weight: 500; border-radius: 6px 6px 0 0; border: 1px solid transparent; cursor: pointer; color: var(--neon-text-secondary);';
+        newTab.innerHTML = `<span>Query ${nextId}</span>`;
+        
+        document.getElementById('tabHeaders').insertBefore(newTab, addTabBtn);
+        switchTab(nextId);
+      };
+    }
+
+    // Line numbering
+    function updateLineNumbers() {
+      if (!lineGutter || !sqlInput) return;
+      const lines = sqlInput.value.split('\n').length;
+      let text = '';
+      for (let i = 1; i <= Math.max(lines, 6); i++) {
+        text += i + '<br />';
+      }
+      lineGutter.innerHTML = text;
+    }
+    if (sqlInput) {
+      sqlInput.addEventListener('input', updateLineNumbers);
+      updateLineNumbers();
+    }
+
+    // Table search filter
+    if (tableSearch) {
+      tableSearch.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        document.querySelectorAll('.table-node').forEach(node => {
+          const tname = node.getAttribute('data-table') || '';
+          node.style.display = tname.toLowerCase().includes(query) ? 'block' : 'none';
+        });
+      });
+    }
+
+    // Quick select helper
+    window.quickSelectTable = function(tableName) {
+      sqlInput.value = `SELECT * FROM "${tableName}" LIMIT 25;`;
+      updateLineNumbers();
+      runQuery();
+    };
+
+    // Keyboard shortcut: Cmd+Enter / Ctrl+Enter
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runQuery();
+      }
+    });
+
+    const refreshPoliciesBtn = document.getElementById('refreshPoliciesBtn');
+    const livePoliciesList = document.getElementById('livePoliciesList');
+
+    if (runBtn) runBtn.onclick = runQuery;
+    if (clearEditorBtn) clearEditorBtn.onclick = () => { sqlInput.value = ''; updateLineNumbers(); sqlInput.focus(); };
+    if (refreshSchemaBtn) refreshSchemaBtn.onclick = reloadSchemaDynamic;
+    if (refreshPoliciesBtn) refreshPoliciesBtn.onclick = loadActivePolicies;
+
+    async function reloadSchemaDynamic() {
+      if (refreshSchemaBtn) refreshSchemaBtn.innerText = 'Refreshing...';
+      try {
+        const res = await fetch(`/api/instances/${instanceId}/schema`);
+        const data = await res.json();
+        if (data && data.tables) {
+          renderTablesTree(data.tables);
+          const badge = document.getElementById('sidebarTabTables');
+          if (badge) badge.innerText = `Tables (${data.tables.length})`;
+        }
+      } catch (err) {
+        console.error('Failed to reload schema:', err);
+      } finally {
+        if (refreshSchemaBtn) refreshSchemaBtn.innerText = 'Refresh';
+      }
+    }
+
+    function renderTablesTree(tables) {
+      const tree = document.getElementById('tablesTree');
+      if (!tree) return;
+
+      const header = `
+        <div style="padding: 0.35rem 0.85rem; font-size: 0.6875rem; font-weight: 600; color: var(--neon-text-muted); text-transform: uppercase; letter-spacing: 0.05em; display: flex; justify-content: space-between; align-items: center;">
+          <span>schema: public</span>
+          <button id="refreshSchemaBtn" style="background: none; border: none; color: var(--neon-green); cursor: pointer; font-size: 0.6875rem;" title="Refresh Schema">
+            Refresh
+          </button>
+        </div>
+      `;
+
+      if (!tables || tables.length === 0) {
+        tree.innerHTML = header + `
+          <div style="padding: 2.5rem 1rem; text-align: center; color: var(--neon-text-muted); font-size: 0.75rem;">
+            No public tables found.<br />
+            <button onclick="loadTemplate('create_users')" class="neon-btn neon-btn-secondary" style="font-size: 0.7rem; margin-top: 0.75rem; padding: 0.25rem 0.6rem;">
+              + Create Table
+            </button>
+          </div>
+        `;
+        const btn = document.getElementById('refreshSchemaBtn');
+        if (btn) btn.onclick = reloadSchemaDynamic;
+        return;
+      }
+
+      let nodesHtml = '';
+      tables.forEach(t => {
+        nodesHtml += `
+          <div class="table-node" data-table="${t.tableName}" style="margin-bottom: 0.25rem;">
+            <div 
+              class="table-row-item"
+              style="padding: 0.45rem 0.85rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-radius: 5px; margin: 0 0.35rem; transition: all 0.1s ease;"
+              onclick="quickSelectTable('${t.tableName}')"
+              title="Click to query this table"
+            >
+              <div style="display: flex; align-items: center; gap: 0.45rem; font-size: 0.8125rem; font-weight: 600;">
+                <span style="color: ${t.rlsEnabled ? '#00e599' : 'var(--neon-green)'};">${t.rlsEnabled ? '🛡️' : '▦'}</span>
+                <span style="color: #f3f4f6;">${t.tableName}</span>
+              </div>
+              <span class="neon-badge ${t.rlsEnabled ? 'neon-badge-green' : 'neon-badge-gray'}" style="font-size: 0.65rem; padding: 0.05rem 0.35rem;">
+                ${t.rowCount} ${t.rowCount === 1 ? 'row' : 'rows'}
+              </span>
+            </div>
+
+            <div class="table-cols" style="padding: 0.25rem 0.85rem 0.4rem 1.85rem; font-size: 0.7rem; display: flex; flex-direction: column; gap: 0.25rem;">
+              ${(t.columns || []).map(c => `
+                <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono);">
+                  <span style="color: var(--neon-text-secondary);">${c.column_name}</span>
+                  <span style="color: var(--neon-text-muted); font-size: 0.65rem; background: rgba(255,255,255,0.03); padding: 0.05rem 0.25rem; border-radius: 3px;">
+                    ${c.data_type}
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      });
+
+      tree.innerHTML = header + nodesHtml;
+      const btn = document.getElementById('refreshSchemaBtn');
+      if (btn) btn.onclick = reloadSchemaDynamic;
+    }
+
+    async function loadActivePolicies() {
+      if (!livePoliciesList) return;
+      livePoliciesList.innerHTML = '<div style="color: var(--neon-text-muted); font-style: italic;">Loading security policies...</div>';
+      try {
+        const res = await fetch(`/api/instances/${instanceId}/policies`);
+        const data = await res.json();
+        if (!data || !data.tables) {
+          livePoliciesList.innerHTML = '<div style="color: var(--neon-text-muted);">Failed to load policies.</div>';
+          return;
+        }
+
+        let html = '';
+        data.tables.forEach(table => {
+          const isEnabled = table.rlsEnabled;
+          const tablePolicies = (data.policies || []).filter(p => p.tablename === table.tableName);
+
+          html += `
+            <div style="background: #07080a; border: 1px solid ${isEnabled ? 'rgba(0,229,153,0.3)' : 'var(--neon-border)'}; border-radius: 6px; padding: 0.5rem 0.65rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                <span style="font-weight: 600; color: #fff; font-family: var(--font-mono); font-size: 0.75rem;">${table.tableName}</span>
+                <span class="neon-badge ${isEnabled ? 'neon-badge-green' : 'neon-badge-gray'}" style="font-size: 0.625rem; padding: 0.05rem 0.35rem;">
+                  ${isEnabled ? '🛡️ RLS Active' : '○ RLS Disabled'}
+                </span>
+              </div>
+              ${tablePolicies.length > 0 ? tablePolicies.map(p => `
+                <div style="font-size: 0.6875rem; color: var(--neon-text-secondary); background: rgba(0,0,0,0.3); border-radius: 4px; padding: 0.3rem 0.45rem; margin-top: 0.25rem;">
+                  <div style="display: flex; justify-content: space-between; color: var(--neon-green); font-weight: 600;">
+                    <span>${p.policyname}</span>
+                    <span style="color: var(--neon-text-muted);">${p.cmd} (${p.roles.join(', ')})</span>
+                  </div>
+                  <div style="font-family: var(--font-mono); font-size: 0.625rem; color: #a1a1aa; margin-top: 0.15rem; word-break: break-all;">
+                    USING: ${p.using_clause || 'true'}
+                  </div>
+                </div>
+              `).join('') : `
+                <div style="font-size: 0.65rem; color: var(--neon-text-muted);">
+                  ${isEnabled ? 'No policies configured. Access denied to non-superusers.' : 'Rows visible to all connected clients.'}
+                </div>
+              `}
+            </div>
+          `;
+        });
+
+        livePoliciesList.innerHTML = html;
+      } catch (err) {
+        livePoliciesList.innerHTML = `<div style="color: #f87171;">Failed to load: ${err.message}</div>`;
+      }
+    }
+
+    if (formatBtn) {
+      formatBtn.onclick = () => {
+        let val = sqlInput.value;
+        const keywords = ['select', 'from', 'where', 'and', 'or', 'insert into', 'values', 'update', 'set', 'delete', 'create table', 'drop table', 'limit', 'order by', 'group by', 'join', 'left join'];
+        keywords.forEach(kw => {
+          const re = new RegExp(`\\b${kw}\\b`, 'gi');
+          val = val.replace(re, kw.toUpperCase());
+        });
+        sqlInput.value = val;
+      };
+    }
+
+    async function runQuery() {
+      const fullSql = sqlInput.value;
+      const startPos = sqlInput.selectionStart;
+      const endPos = sqlInput.selectionEnd;
+      const selectedText = (startPos !== endPos) ? fullSql.substring(startPos, endPos).trim() : '';
+      const sql = (selectedText.length > 0 ? selectedText : fullSql).trim();
+
+      if (!sql) return;
+
+      runBtn.disabled = true;
+      runBtn.innerHTML = 'Executing...';
+      errorBox.style.display = 'none';
+      telemetryPill.style.display = 'none';
+
+      try {
+        const start = performance.now();
+        const rlsParts = (rlsRoleSelector?.value || 'admin:admin_root').split(':');
+        const rlsRole = rlsParts[0];
+        const rlsUserId = rlsParts[1];
+
+        const res = await fetch(`/api/instances/${instanceId}/query`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-User-Id': rlsUserId,
+            'X-User-Role': rlsRole,
+          },
+          body: JSON.stringify({ 
+            query: sql,
+            rlsContext: { userId: rlsUserId, role: rlsRole },
+          }),
+        });
+
+        const data = await res.json();
+        const duration = data.durationMs || (Math.round((performance.now() - start) * 10) / 10);
+
+        if (!res.ok || data.error) {
+          errorBox.innerText = `PostgreSQL Error: ${data.error || 'Query failed'}`;
+          errorBox.style.display = 'block';
+          neonGrid.style.display = 'none';
+          emptyNotice.style.display = 'block';
+          emptyNotice.innerText = 'Query returned an error.';
+          messagesDisplay.innerHTML = `<span style="color: #f87171;">✕ ${data.error}</span>`;
+        } else {
+          currentRows = data.rows || [];
+          currentFields = data.fields || [];
+
+          renderNeonGrid(currentFields, currentRows);
+
+          telemetryRows.innerText = `${data.rowCount} row${data.rowCount === 1 ? '' : 's'}`;
+          telemetryTime.innerText = `⚡ ${duration}ms`;
+          telemetryPill.style.display = 'flex';
+
+          jsonDisplay.innerText = JSON.stringify(currentRows, null, 2);
+          messagesDisplay.innerHTML = `✓ Query completed successfully.\n• Execution Time: ${duration}ms\n• Rows affected/returned: ${data.rowCount}\n• Node storage: Google Drive backed PGlite instance (${instanceId})`;
+
+          syncIndicator.innerHTML = '<span style="width: 6px; height: 6px; border-radius: 50%; background: #f59e0b;"></span><span>WAL buffered</span>';
+
+          // Auto-refresh schema & policies if query modified tables or policies
+          const upper = sql.toUpperCase();
+          if (upper.includes('CREATE') || upper.includes('DROP') || upper.includes('ALTER') || upper.includes('POLICY')) {
+            reloadSchemaDynamic();
+            loadActivePolicies();
+          }
+        }
+      } catch (err) {
+        errorBox.innerText = `Network Error: ${err.message}`;
+        errorBox.style.display = 'block';
+      } finally {
+        runBtn.disabled = false;
+        runBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Run <span style="font-size: 0.7rem; opacity: 0.75; font-weight: 600; margin-left: 0.25rem;">⌘⏎</span>';
+      }
+    }
+
+    function renderNeonGrid(fields, rows) {
+      gridHead.innerHTML = '';
+      gridBody.innerHTML = '';
+
+      if (!rows || rows.length === 0) {
+        emptyNotice.style.display = 'block';
+        emptyNotice.innerText = 'Query executed successfully. 0 rows returned.';
+        neonGrid.style.display = 'none';
+        return;
+      }
+
+      emptyNotice.style.display = 'none';
+      neonGrid.style.display = 'table';
+
+      const trHead = document.createElement('tr');
+      const colNames = fields.length > 0 ? fields.map(f => f.name) : Object.keys(rows[0]);
+
+      colNames.forEach(col => {
+        const th = document.createElement('th');
+        th.style.cssText = 'padding: 0.55rem 0.85rem; font-size: 0.75rem; font-weight: 600; color: #a1a1aa; border-bottom: 1px solid var(--neon-border); font-family: var(--font-mono);';
+        
+        // Infer data type
+        const sampleVal = rows[0][col];
+        let typeLabel = 'text';
+        if (typeof sampleVal === 'number') typeLabel = Number.isInteger(sampleVal) ? 'int' : 'numeric';
+        else if (typeof sampleVal === 'boolean') typeLabel = 'bool';
+
+        th.innerHTML = `<span>${col}</span> <span style="font-size: 0.65rem; color: #52525b; font-weight: 400; margin-left: 0.2rem;">[${typeLabel}]</span>`;
+        trHead.appendChild(th);
+      });
+      gridHead.appendChild(trHead);
+
+      rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.1s ease;';
+        if (idx % 2 === 1) tr.style.background = 'rgba(255,255,255,0.015)';
+
+        tr.onmouseenter = () => tr.style.background = 'rgba(0, 229, 153, 0.04)';
+        tr.onmouseleave = () => tr.style.background = (idx % 2 === 1) ? 'rgba(255,255,255,0.015)' : 'transparent';
+
+        colNames.forEach(col => {
+          const td = document.createElement('td');
+          td.style.cssText = 'padding: 0.5rem 0.85rem; font-family: var(--font-mono); font-size: 0.8125rem; color: #d4d4d8; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;';
+          const val = row[col];
+          td.innerText = val === null ? 'NULL' : (typeof val === 'object' ? JSON.stringify(val) : String(val));
+          if (val === null) td.style.color = '#52525b';
+          
+          // Click cell to copy value
+          td.onclick = () => {
+            navigator.clipboard.writeText(td.innerText);
+            const orig = td.style.background;
+            td.style.background = 'rgba(0, 229, 153, 0.2)';
+            setTimeout(() => td.style.background = orig, 400);
+          };
+          td.title = 'Click to copy value';
+
+          tr.appendChild(td);
+        });
+        gridBody.appendChild(tr);
+      });
+    }
+
+    // Copy Results
+    if (copyResultsBtn) {
+      copyResultsBtn.onclick = () => {
+        if (!currentRows || currentRows.length === 0) return;
+        navigator.clipboard.writeText(JSON.stringify(currentRows, null, 2));
+        copyResultsBtn.innerText = 'Copied!';
+        setTimeout(() => copyResultsBtn.innerText = 'Copy', 1200);
+      };
+    }
+
+    // Flush to Google Drive
+    if (studioFlushBtn) {
+      studioFlushBtn.onclick = async () => {
+        studioFlushBtn.disabled = true;
+        studioFlushBtn.innerText = 'Syncing...';
+        try {
+          const res = await fetch(`/api/instances/${instanceId}/sync`, { method: 'POST' });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            syncIndicator.innerHTML = '<span style="width: 6px; height: 6px; border-radius: 50%; background: var(--neon-green);"></span><span>Drive Synced</span>';
+          } else {
+            alert('Flush failed: ' + (data.error || 'Unknown error'));
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+        } finally {
+          studioFlushBtn.disabled = false;
+          studioFlushBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Flush WAL';
+        }
+      };
+    }
+
+    // Export CSV
+    if (exportCsvBtn) {
+      exportCsvBtn.onclick = () => {
+        if (!currentRows || currentRows.length === 0) return;
+        const keys = Object.keys(currentRows[0]);
+        const csv = [
+          keys.join(','),
+          ...currentRows.map(row => keys.map(k => JSON.stringify(row[k] ?? '')).join(','))
+        ].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `query_export_${Date.now()}.csv`;
+        a.click();
+      };
+    }
+
+    // Export JSON
+    if (exportJsonBtn) {
+      exportJsonBtn.onclick = () => {
+        if (!currentRows || currentRows.length === 0) return;
+        const blob = new Blob([JSON.stringify(currentRows, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `query_export_${Date.now()}.json`;
+        a.click();
+      };
+    }
+  </script>
+</Layout>

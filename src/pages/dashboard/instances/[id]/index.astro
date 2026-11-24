@@ -1,0 +1,361 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import { getPlatformDB } from '../../../../lib/db';
+import { getEnv } from '../../../../lib/env';
+
+const { id } = Astro.params;
+const db = getPlatformDB(Astro.locals);
+const env = getEnv(Astro.locals);
+
+if (!id) {
+  return Astro.redirect('/dashboard/instances');
+}
+
+const instance = await db.getInstance(id);
+if (!instance) {
+  return Astro.redirect('/dashboard/instances');
+}
+
+const account = await db.getGoogleAccount(instance.google_account_id);
+const apiKeys = await db.listApiKeys(instance.id);
+
+const quotaGb = Math.round((instance.allocated_quota_bytes / 1024 / 1024 / 1024) * 10) / 10;
+const currentSizeMb = Math.round((instance.current_size_bytes / 1024 / 1024) * 100) / 100;
+const appUrl = env.APP_URL.replace(/\/$/, '');
+---
+
+<Layout title={`${instance.name} - Settings`} activeNav="instances" instanceId={instance.id} instanceName={instance.name}>
+  <!-- Neon Instance Top Header -->
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.25rem;">
+        <h1 style="font-size: 1.75rem; font-weight: 700; letter-spacing: -0.025em;">
+          {instance.name}
+        </h1>
+        <span class="neon-badge neon-badge-green">main branch</span>
+        <span class="neon-badge neon-badge-gray">{instance.status}</span>
+      </div>
+      <div style="font-size: 0.8125rem; color: var(--neon-text-muted); font-family: var(--font-mono);">
+        Instance ID: {instance.id} • Host Drive: <span style="color: var(--neon-text-secondary);">{account?.google_email || 'Google Drive'}</span>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 0.65rem;">
+      <button id="syncBtn" class="neon-btn neon-btn-secondary">
+        🔄 Checkpoint to Drive
+      </button>
+      <a href={`/dashboard/instances/${instance.id}/studio`} class="neon-btn neon-btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        Open SQL Editor
+      </a>
+    </div>
+  </div>
+
+  <div id="syncNotification" style="display: none; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.8125rem;"></div>
+
+  <!-- Metric Gauges Grid -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.75rem;">
+    <div class="neon-card">
+      <div style="color: var(--neon-text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">
+        Allocated Storage
+      </div>
+      <div style="font-size: 1.5rem; font-weight: 700;">
+        {quotaGb} GB
+      </div>
+      <div style="font-size: 0.75rem; color: var(--neon-text-secondary); margin-top: 0.25rem; font-family: var(--font-mono);">
+        Folder: {instance.gdrive_root_folder_id}
+      </div>
+    </div>
+
+    <div class="neon-card">
+      <div style="color: var(--neon-text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">
+        Database Size
+      </div>
+      <div style="font-size: 1.5rem; font-weight: 700; color: var(--neon-cyan);">
+        {currentSizeMb < 0.1 ? `${Math.round(instance.current_size_bytes / 1024)} KB` : `${currentSizeMb} MB`}
+      </div>
+      <div style="font-size: 0.75rem; color: var(--neon-text-secondary); margin-top: 0.25rem;">
+        Base Snapshot + Incremental WAL
+      </div>
+    </div>
+
+    <div class="neon-card">
+      <div style="color: var(--neon-text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">
+        Postgres Version
+      </div>
+      <div style="font-size: 1.5rem; font-weight: 700; color: var(--neon-green);">
+        v{instance.pg_version}
+      </div>
+      <div style="font-size: 0.75rem; color: var(--neon-text-secondary); margin-top: 0.25rem;">
+        PGlite WASM with JSONB / ACID
+      </div>
+    </div>
+
+    <div class="neon-card">
+      <div style="color: var(--neon-text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">
+        Last Drive Sync
+      </div>
+      <div style="font-size: 1.25rem; font-weight: 700;">
+        {instance.last_synced_at ? new Date(instance.last_synced_at).toLocaleTimeString() : 'Recent'}
+      </div>
+      <div style="font-size: 0.75rem; color: var(--neon-text-secondary); margin-top: 0.25rem;">
+        Verified Google Drive checkpoint
+      </div>
+    </div>
+  </div>
+
+  <!-- Connection Details Ribbon -->
+  <div class="neon-card" style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.85rem;">Connection Methods</h2>
+    
+    <div style="display: flex; gap: 0.4rem; border-bottom: 1px solid var(--neon-border); padding-bottom: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap;">
+      <button class="neon-btn neon-btn-secondary conn-tab active" data-tab="rest" style="font-size: 0.75rem; padding: 0.3rem 0.65rem; border-color: var(--neon-green); color: #fff;">HTTP / REST API</button>
+      <button class="neon-btn neon-btn-secondary conn-tab" data-tab="cli" style="font-size: 0.75rem; padding: 0.3rem 0.65rem;">Local TCP 5432 Wire Proxy</button>
+      <button class="neon-btn neon-btn-secondary conn-tab" data-tab="connstring" style="font-size: 0.75rem; padding: 0.3rem 0.65rem;">Connection String</button>
+      <button class="neon-btn neon-btn-secondary conn-tab" data-tab="security" style="font-size: 0.75rem; padding: 0.3rem 0.65rem; color: var(--neon-cyan);">🛡️ Security & RLS</button>
+    </div>
+
+    <!-- Tab 1: HTTP REST -->
+    <div id="tab-rest" class="conn-content">
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); margin-bottom: 0.75rem;">
+        Execute standard PostgreSQL queries via JSON over HTTP:
+      </p>
+      <div class="neon-code" style="margin-bottom: 1rem;">
+<pre>curl -X POST "{appUrl}/api/instances/{instance.id}/query" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_DRIVEQL_API_KEY" \
+  -d '&#123;
+    "query": "SELECT * FROM welcome WHERE id = $1",
+    "params": [1]
+  &#125;'</pre>
+      </div>
+
+      <p style="font-size: 0.75rem; color: var(--neon-text-muted); margin-bottom: 0.4rem;">TypeScript / Node.js fetch snippet:</p>
+      <div class="neon-code">
+<pre>const res = await fetch('{appUrl}/api/instances/{instance.id}/query', &#123;
+  method: 'POST',
+  headers: &#123;
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + process.env.DRIVEQL_API_KEY,
+  &#125;,
+  body: JSON.stringify(&#123; query: 'SELECT * FROM welcome LIMIT 10;' &#125;),
+&#125;);
+const &#123; rows, durationMs &#125; = await res.json();
+console.log('Results in ' + durationMs + 'ms:', rows);</pre>
+      </div>
+    </div>
+
+    <!-- Tab 2: CLI Proxy -->
+    <div id="tab-cli" class="conn-content" style="display: none;">
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); margin-bottom: 0.75rem;">
+        Connect Prisma, Drizzle, TypeORM, DBeaver, or standard <code>psql</code> via the local wire bridge:
+      </p>
+      <div class="neon-code" style="margin-bottom: 1rem;">
+<pre>node ./src/cli/proxy.mjs --instance {instance.id} --endpoint {appUrl} --token YOUR_DRIVEQL_API_KEY</pre>
+      </div>
+      <p style="font-size: 0.75rem; color: var(--neon-text-muted); margin-bottom: 0.4rem;">Standard psql client command:</p>
+      <div class="neon-code">
+<pre>psql -h 127.0.0.1 -p 5432 -U postgres -d driveql</pre>
+      </div>
+    </div>
+
+    <!-- Tab 3: Connection String -->
+    <div id="tab-connstring" class="conn-content" style="display: none;">
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); margin-bottom: 0.75rem;">
+        Direct URI for database connection strings:
+      </p>
+      <div class="neon-code">
+<pre>postgresql://postgres:YOUR_DRIVEQL_API_KEY@localhost:5432/driveql?sslmode=disable</pre>
+      </div>
+    </div>
+
+    <!-- Tab 4: Security & RLS Guide -->
+    <div id="tab-security" class="conn-content" style="display: none;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+        <div style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.85rem;">
+          <div style="color: var(--neon-green); font-size: 0.8125rem; font-weight: 700; margin-bottom: 0.25rem;">
+            🔐 Zero-Knowledge Encryption at Rest
+          </div>
+          <p style="font-size: 0.75rem; color: var(--neon-text-secondary); line-height: 1.5;">
+            Snapshots and WAL segments are encrypted client-side with AES-256-GCM before writing to Google Drive. Google has zero access to raw relational records.
+          </p>
+        </div>
+
+        <div style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.85rem;">
+          <div style="color: var(--neon-cyan); font-size: 0.8125rem; font-weight: 700; margin-bottom: 0.25rem;">
+            🛡️ PostgreSQL Row-Level Security
+          </div>
+          <p style="font-size: 0.75rem; color: var(--neon-text-secondary); line-height: 1.5;">
+            Native Postgres RLS restricts row access based on <code style="color:#fff;">app.current_user_id</code>. Pass <code style="color:#fff;">X-User-Id</code> header in queries to isolate tenants.
+          </p>
+        </div>
+
+        <div style="background: #07080a; border: 1px solid var(--neon-border); border-radius: 6px; padding: 0.85rem;">
+          <div style="color: var(--neon-amber); font-size: 0.8125rem; font-weight: 700; margin-bottom: 0.25rem;">
+            ⚡ Edge Rate Limiting & DoS Shield
+          </div>
+          <p style="font-size: 0.75rem; color: var(--neon-text-secondary); line-height: 1.5;">
+            Cloudflare edge middleware enforces a sliding window rate limit of 180 requests/min per IP, shielding your database from DDoS attacks.
+          </p>
+        </div>
+      </div>
+
+      <p style="font-size: 0.8125rem; color: var(--neon-text-secondary); margin-bottom: 0.5rem;">
+        Example: Query with Authenticated User Context for RLS enforcement:
+      </p>
+      <div class="neon-code">
+<pre>curl -X POST "{appUrl}/api/instances/{instance.id}/query" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_DRIVEQL_API_KEY" \
+  -H "X-User-Id: usr_alice" \
+  -H "X-User-Role: authenticated" \
+  -d '&#123;
+    "query": "SELECT * FROM tenant_documents;"
+  &#125;'</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Keys Management -->
+  <div class="neon-card" style="margin-bottom: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <div>
+        <h2 style="font-size: 1rem; font-weight: 700;">API Access Tokens</h2>
+        <p style="font-size: 0.75rem; color: var(--neon-text-muted);">
+          Secret Bearer tokens used to query this database instance programmatically.
+        </p>
+      </div>
+      <button id="genKeyBtn" class="neon-btn neon-btn-primary" style="font-size: 0.75rem; padding: 0.35rem 0.75rem;">
+        + Generate New API Key
+      </button>
+    </div>
+
+    <div id="newKeyAlert" style="display: none; background: rgba(0, 229, 153, 0.08); border: 1px solid rgba(0, 229, 153, 0.25); border-radius: 6px; padding: 1rem; margin-bottom: 1rem;">
+      <div style="font-size: 0.8125rem; color: var(--neon-green); font-weight: 600; margin-bottom: 0.25rem;">
+        New API Key Created! Copy it now (will not be revealed again):
+      </div>
+      <div id="newKeyValue" style="font-family: var(--font-mono); font-size: 0.8125rem; color: #fff; background: #060708; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid var(--neon-border); user-select: all;"></div>
+    </div>
+
+    {apiKeys.length === 0 ? (
+      <div style="text-align: center; padding: 2rem; color: var(--neon-text-muted); font-size: 0.8125rem; border: 1px dashed var(--neon-border); border-radius: 6px;">
+        No API keys generated yet. Click "+ Generate New API Key" to enable external applications to connect.
+      </div>
+    ) : (
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.8125rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--neon-border); color: var(--neon-text-muted); font-size: 0.75rem; text-transform: uppercase;">
+              <th style="padding: 0.5rem 1rem; text-align: left;">Label</th>
+              <th style="padding: 0.5rem 1rem; text-align: left;">Prefix</th>
+              <th style="padding: 0.5rem 1rem; text-align: left;">Created</th>
+              <th style="padding: 0.5rem 1rem; text-align: right;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {apiKeys.map((k) => (
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <td style="padding: 0.65rem 1rem; font-weight: 600;">{k.name}</td>
+                <td style="padding: 0.65rem 1rem; font-family: var(--font-mono); color: var(--neon-cyan);">{k.key_prefix}</td>
+                <td style="padding: 0.65rem 1rem; color: var(--neon-text-muted); font-size: 0.75rem;">
+                  {new Date(k.created_at).toLocaleDateString()}
+                </td>
+                <td style="padding: 0.65rem 1rem; text-align: right;">
+                  <span class="neon-badge neon-badge-green">Active</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+
+  <script is:inline define:vars={{ instanceId: instance.id }}>
+    const tabs = document.querySelectorAll('.conn-tab');
+    const contents = document.querySelectorAll('.conn-content');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => {
+          t.style.borderColor = 'var(--neon-border)';
+          t.style.color = 'var(--neon-text-primary)';
+        });
+        tab.style.borderColor = 'var(--neon-green)';
+        tab.style.color = '#fff';
+
+        const target = tab.getAttribute('data-tab');
+        contents.forEach(c => {
+          c.style.display = c.id === `tab-${target}` ? 'block' : 'none';
+        });
+      });
+    });
+
+    const syncBtn = document.getElementById('syncBtn');
+    const syncNotif = document.getElementById('syncNotification');
+
+    if (syncBtn) {
+      syncBtn.addEventListener('click', async () => {
+        syncBtn.disabled = true;
+        syncBtn.innerText = 'Syncing...';
+        syncNotif.style.display = 'none';
+
+        try {
+          const res = await fetch(`/api/instances/${instanceId}/sync`, { method: 'POST' });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            syncNotif.style.display = 'block';
+            syncNotif.style.background = 'rgba(0, 229, 153, 0.08)';
+            syncNotif.style.color = 'var(--neon-green)';
+            syncNotif.style.border = '1px solid rgba(0, 229, 153, 0.25)';
+            syncNotif.innerText = `✓ ${data.message} (Snapshot size: ${Math.round(data.sizeBytes / 1024)} KB)`;
+          } else {
+            syncNotif.style.display = 'block';
+            syncNotif.style.background = 'rgba(239, 68, 68, 0.08)';
+            syncNotif.style.color = '#f87171';
+            syncNotif.style.border = '1px solid rgba(239, 68, 68, 0.25)';
+            syncNotif.innerText = `✕ Sync failed: ${data.error || 'Unknown error'}`;
+          }
+        } catch (err) {
+          syncNotif.style.display = 'block';
+          syncNotif.style.background = 'rgba(239, 68, 68, 0.08)';
+          syncNotif.style.color = '#f87171';
+          syncNotif.innerText = `✕ Error: ${err.message}`;
+        } finally {
+          syncBtn.disabled = false;
+          syncBtn.innerText = '🔄 Checkpoint to Drive';
+        }
+      });
+    }
+
+    const genKeyBtn = document.getElementById('genKeyBtn');
+    const newKeyAlert = document.getElementById('newKeyAlert');
+    const newKeyValue = document.getElementById('newKeyValue');
+
+    if (genKeyBtn) {
+      genKeyBtn.addEventListener('click', async () => {
+        const name = prompt('Label for this API key:', 'Production Secret');
+        if (!name) return;
+        const isReadOnly = confirm('Make this key READ-ONLY? (OK = Read-Only [SELECT only], Cancel = Full Admin [Read/Write/DDL])');
+        const role = isReadOnly ? 'read-only' : 'admin';
+
+        try {
+          const res = await fetch(`/api/instances/${instanceId}/keys`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, role }),
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            newKeyAlert.style.display = 'block';
+            newKeyValue.innerText = data.apiKey;
+          } else {
+            alert('Failed: ' + (data.error || 'Unknown error'));
+          }
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
+      });
+    }
+  </script>
+</Layout>
